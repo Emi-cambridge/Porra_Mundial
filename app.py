@@ -51,23 +51,23 @@ def init_db():
         cursor.execute("INSERT INTO usuarios (username, password, nombre, es_admin) VALUES ('admin', 'admin123', 'Administrador', 1)")
         
         # Lista de la familia extraída de la imagen
-        familiares = [
-            ('Emi', 'familia2026', 'Emi'),
-            ('Laura', 'familia2026', 'Laura'),
-            ('nico', 'familia2026', 'Nico'),
-            ('Lorenzo', 'familia2026', 'Lorenzo'),
-            ('Fatima', 'familia2026', 'Fatima'),
-            ('Tamara', 'familia2026', 'Tamara'),
-            ('irma', 'familia2026', 'Tía Irma Ortiz'),
-            ('miguel', 'familia2026', 'Miguel Felipe'),
-            ('sara', 'familia2026', 'Sara María'),
-            ('omar', 'familia2026', 'OmaR'),
-            ('monica', 'familia2026', 'Monica'),
-            ('clara', 'familia2026', 'Tía Clara Inés'),
-            ('catis', 'familia2026', 'Catis'),
-            ('sebas', 'familia2026', 'Sebas'),
-            ('maria_f', 'familia2026', 'Maria F'),
-            ('gloria', 'familia2026', 'Tía Gloria')
+      familiares = [
+            ('emi', 'emi642', 'Emi'),
+            ('laura', 'laura105', 'Laura'),
+            ('nico', 'nico837', 'Nico'),
+            ('lorenzo', 'lorenzo419', 'Lorenzo'),
+            ('fatima', 'fatima722', 'Fatima'),
+            ('tamara', 'tamara314', 'Tamara'),
+            ('irma', 'irma903', 'Tía Irma Ortiz'),
+            ('miguel', 'miguel56', 'Miguel Felipe'),
+            ('sara', 'sara481', 'Sara María'),
+            ('omar', 'omar625', 'OmaR'),
+            ('monica', 'monica178', 'Monica'),
+            ('clara', 'clara894', 'Tía Clara Inés'),
+            ('catis', 'catis231', 'Catis'),
+            ('sebas', 'sebas550', 'Sebas'),
+            ('maria_f', 'maria_f367', 'Maria F'),
+            ('gloria', 'gloria712', 'Tía Gloria')
         ]
         cursor.executemany("INSERT INTO usuarios (username, password, nombre, es_admin) VALUES (?, ?, ?, 0)", familiares)
     
