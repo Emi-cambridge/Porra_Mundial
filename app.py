@@ -14,73 +14,109 @@ def get_db_connection():
     return conn
 
 def init_db():
-    conn = sqlite3.connect('porra.db')
-    c = conn.cursor()
+    """Crea las tablas de forma automática si no existen e inserta datos iniciales."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
     
-    # Crear tablas si no existen
-    c.execute('''CREATE TABLE IF NOT EXISTS usuarios 
-                 (username TEXT PRIMARY KEY, password TEXT, isAdmin INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS partidos 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, equipo_local TEXT, equipo_visitante TEXT, fase TEXT, fecha TEXT, resultado_local INTEGER, resultado_visitante INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS apuestas 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, partido_id INTEGER, pronostico_local INTEGER, pronostico_visitante INTEGER)''')
+    # Tabla de Usuarios
+    cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE,
+                        password TEXT,
+                        nombre TEXT,
+                        es_admin INTEGER DEFAULT 0)''')
     
-    # Crear administrador por defecto si no existe
-    c.execute("SELECT * FROM usuarios WHERE username='admin'")
-    if not c.fetchone():
-        c.execute("INSERT INTO usuarios VALUES ('admin', 'admin123', 1)")
+    # Tabla de Partidos
+    cursor.execute('''CREATE TABLE IF NOT EXISTS partidos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        equipo1 TEXT,
+                        equipo2 TEXT,
+                        fecha TEXT,
+                        goles1 INTEGER DEFAULT NULL,
+                        goles2 INTEGER DEFAULT NULL,
+                        jugado INTEGER DEFAULT 0)''')
     
-    # --- INYECCIÓN AUTOMÁTICA DE PARTIDOS DEL MUNDIAL 2026 ---
-    c.execute("SELECT COUNT(*) FROM partidos")
-    if c.fetchone()[0] == 0:
+    # Tabla de Apuestas
+    cursor.execute('''CREATE TABLE IF NOT EXISTS apuestas (
+                        usuario_id INTEGER,
+                        partido_id INTEGER,
+                        goles1 INTEGER,
+                        goles2 INTEGER,
+                        PRIMARY KEY (usuario_id, partido_id))''')
+    
+    # 1. INYECCIÓN AUTOMÁTICA DE FAMILIARES (image_ebb6ce.jpg)
+    cursor.execute("SELECT COUNT(*) FROM usuarios")
+    if cursor.fetchone()[0] == 0:
+        # Administrador principal
+        cursor.execute("INSERT INTO usuarios (username, password, nombre, es_admin) VALUES ('admin', 'admin123', 'Administrador', 1)")
+        
+        # Lista de la familia extraída de la imagen
+        familiares = [
+            ('nico', 'familia2026', 'Nico'),
+            ('irma', 'familia2026', 'Tía Irma Ortiz'),
+            ('miguel', 'familia2026', 'Miguel Felipe'),
+            ('sara', 'familia2026', 'Sara María'),
+            ('omar', 'familia2026', 'OmaR'),
+            ('monica', 'familia2026', 'Monica'),
+            ('clara', 'familia2026', 'Tía Clara Inés'),
+            ('catis', 'familia2026', 'Catis'),
+            ('sebas', 'familia2026', 'Sebas'),
+            ('maria_f', 'familia2026', 'Maria F'),
+            ('gloria', 'familia2026', 'Tía Gloria')
+        ]
+        cursor.executemany("INSERT INTO usuarios (username, password, nombre, es_admin) VALUES (?, ?, ?, 0)", familiares)
+    
+    # 2. INYECCIÓN AUTOMÁTICA DE PARTIDOS DEL MUNDIAL 2026
+    cursor.execute("SELECT COUNT(*) FROM partidos")
+    if cursor.fetchone()[0] == 0:
         partidos_mundial = [
             # JORNADA 1
-            ("México", "Sudáfrica", "Grupo A - Jornada 1", "11-Jun"),
-            ("Corea del Sur", "República Checa", "Grupo A - Jornada 1", "11-Jun"),
-            ("Canadá", "Bosnia y Herzegovina", "Grupo B - Jornada 1", "12-Jun"),
-            ("Estados Unidos", "Paraguay", "Grupo D - Jornada 1", "12-Jun"),
-            ("Catar", "Suiza", "Grupo B - Jornada 1", "13-Jun"),
-            ("Brasil", "Marruecos", "Grupo C - Jornada 1", "13-Jun"),
-            ("Haití", "Escocia", "Grupo C - Jornada 1", "13-Jun"),
-            ("Australia", "Turquía", "Grupo D - Jornada 1", "13-Jun"),
-            ("Alemania", "Curazao", "Grupo E - Jornada 1", "14-Jun"),
-            ("Países Bajos", "Japón", "Grupo F - Jornada 1", "14-Jun"),
-            ("Costa de Marfil", "Ecuador", "Grupo E - Jornada 1", "14-Jun"),
-            ("Suecia", "Túnez", "Grupo F - Jornada 1", "14-Jun"),
-            ("España", "Cabo Verde", "Grupo H - Jornada 1", "15-Jun"),
-            ("Bélgica", "Egipto", "Grupo G - Jornada 1", "15-Jun"),
-            ("Arabia Saudita", "Uruguay", "Grupo H - Jornada 1", "15-Jun"),
-            ("Irán", "Nueva Zelanda", "Grupo G - Jornada 1", "15-Jun"),
-            ("Francia", "Senegal", "Grupo I - Jornada 1", "16-Jun"),
-            ("Irak", "Noruega", "Grupo I - Jornada 1", "16-Jun"),
-            ("Argentina", "Argelia", "Grupo J - Jornada 1", "16-Jun"),
-            ("Austria", "Jordania", "Grupo J - Jornada 1", "16-Jun"),
-            ("Portugal", "RD Congo", "Grupo K - Jornada 1", "17-Jun"),
-            ("Uzbekistán", "Colombia", "Grupo K - Jornada 1", "17-Jun"),
-            ("Inglaterra", "Croacia", "Grupo L - Jornada 1", "17-Jun"),
-            ("Ghana", "Panamá", "Grupo L - Jornada 1", "17-Jun"),
+            ("México", "Sudáfrica", "Grupo A - 11-Jun"),
+            ("Corea del Sur", "República Checa", "Grupo A - 11-Jun"),
+            ("Canadá", "Bosnia y Herzegovina", "Grupo B - 12-Jun"),
+            ("Estados Unidos", "Paraguay", "Grupo D - 12-Jun"),
+            ("Catar", "Suiza", "Grupo B - 13-Jun"),
+            ("Brasil", "Marruecos", "Grupo C - 13-Jun"),
+            ("Haití", "Escocia", "Grupo C - 13-Jun"),
+            ("Australia", "Turquía", "Grupo D - 13-Jun"),
+            ("Alemania", "Curazao", "Grupo E - 14-Jun"),
+            ("Países Bajos", "Japón", "Grupo F - 14-Jun"),
+            ("Costa de Marfil", "Ecuador", "Grupo E - 14-Jun"),
+            ("Suecia", "Túnez", "Grupo F - 14-Jun"),
+            ("España", "Cabo Verde", "Grupo H - 15-Jun"),
+            ("Bélgica", "Egipto", "Grupo G - 15-Jun"),
+            ("Arabia Saudita", "Uruguay", "Grupo H - 15-Jun"),
+            ("Irán", "Nueva Zelanda", "Grupo G - 15-Jun"),
+            ("Francia", "Senegal", "Grupo I - 16-Jun"),
+            ("Irak", "Noruega", "Grupo I - 16-Jun"),
+            ("Argentina", "Argelia", "Grupo J - 16-Jun"),
+            ("Austria", "Jordania", "Grupo J - 16-Jun"),
+            ("Portugal", "RD Congo", "Grupo K - 17-Jun"),
+            ("Uzbekistán", "Colombia", "Grupo K - 17-Jun"),
+            ("Inglaterra", "Croacia", "Grupo L - 17-Jun"),
+            ("Ghana", "Panamá", "Grupo L - 17-Jun"),
             
             # JORNADA 2
-            ("República Checa", "Sudáfrica", "Grupo A - Jornada 2", "18-Jun"),
-            ("Suiza", "Bosnia y Herzegovina", "Grupo B - Jornada 2", "18-Jun"),
-            ("Canadá", "Catar", "Grupo B - Jornada 2", "18-Jun"),
-            ("México", "Corea del Sur", "Grupo A - Jornada 2", "18-Jun"),
-            ("Estados Unidos", "Australia", "Grupo D - Jornada 2", "19-Jun"),
-            ("Escocia", "Marruecos", "Grupo C - Jornada 2", "19-Jun"),
-            ("Brasil", "Haití", "Grupo C - Jornada 2", "19-Jun"),
-            ("Turquía", "Paraguay", "Grupo D - Jornada 2", "20-Jun"),
-            ("Países Bajos", "Suecia", "Grupo F - Jornada 2", "20-Jun"),
-            ("Alemania", "Costa de Marfil", "Grupo E - Jornada 2", "20-Jun"),
-            ("Ecuador", "Curazao", "Grupo E - Jornada 2", "20-Jun"),
-            ("Túnez", "Japón", "Grupo F - Jornada 2", "21-Jun"),
-            ("España", "Arabia Saudita", "Grupo H - Jornada 2", "21-Jun"),
-            ("Bélgica", "Irán", "Grupo G - Jornada 2", "21-Jun"),
-            ("Uruguay", "Cabo Verde", "Grupo H - Jornada 2", "21-Jun"),
-            ("Nueva Zelanda", "Egipto", "Grupo G - Jornada 2", "21-Jun")
+            ("República Checa", "Sudáfrica", "Grupo A - 18-Jun"),
+            ("Suiza", "Bosnia y Herzegovina", "Grupo B - 18-Jun"),
+            ("Canadá", "Catar", "Grupo B - 18-Jun"),
+            ("México", "Corea del Sur", "Grupo A - 18-Jun"),
+            ("Estados Unidos", "Australia", "Grupo D - 19-Jun"),
+            ("Escocia", "Marruecos", "Grupo C - 19-Jun"),
+            ("Brasil", "Haití", "Grupo C - 19-Jun"),
+            ("Turquía", "Paraguay", "Grupo D - 20-Jun"),
+            ("Países Bajos", "Suecia", "Grupo F - 20-Jun"),
+            ("Alemania", "Costa de Marfil", "Grupo E - 20-Jun"),
+            ("Ecuador", "Curazao", "Grupo E - 20-Jun"),
+            ("Túnez", "Japón", "Grupo F - 21-Jun"),
+            ("España", "Arabia Saudita", "Grupo H - 21-Jun"),
+            ("Bélgica", "Irán", "Grupo G - 21-Jun"),
+            ("Uruguay", "Cabo Verde", "Grupo H - 21-Jun"),
+            ("Nueva Zelanda", "Egipto", "Grupo G - 21-Jun")
         ]
-        c.executemany("INSERT INTO partidos (equipo_local, equipo_visitante, fase, fecha) VALUES (?, ?, ?, ?)", partidos_mundial)
-        conn.commit()
+        cursor.executemany("INSERT INTO partidos (equipo1, equipo2, fecha) VALUES (?, ?, ?)", partidos_mundial)
         
+    conn.commit()
     conn.close()
 # Inicializar Base de Datos inmediatamente al cargar
 init_db()
