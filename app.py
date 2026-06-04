@@ -52,7 +52,12 @@ def init_db():
         
         # Lista de la familia extraída de la imagen
         familiares = [
+            ('Emi', 'familia2026', 'Emi'),
+            ('Laura', 'familia2026', 'Laura'),
             ('nico', 'familia2026', 'Nico'),
+            ('Lorenzo', 'familia2026', 'Lorenzo'),
+            ('Fatima', 'familia2026', 'Fatima'),
+            ('Tamara', 'familia2026', 'Tamara'),
             ('irma', 'familia2026', 'Tía Irma Ortiz'),
             ('miguel', 'familia2026', 'Miguel Felipe'),
             ('sara', 'familia2026', 'Sara María'),
