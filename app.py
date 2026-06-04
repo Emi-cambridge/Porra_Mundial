@@ -44,14 +44,13 @@ def init_db():
                         goles2 INTEGER,
                         PRIMARY KEY (usuario_id, partido_id))''')
     
-    # 1. INYECCIÓN AUTOMÁTICA DE FAMILIARES (image_ebb6ce.jpg)
+    # 1. INYECCIÓN AUTOMÁTICA DE FAMILIARES CON CONTRASEÑAS ALEATORIAS
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         # Administrador principal
         cursor.execute("INSERT INTO usuarios (username, password, nombre, es_admin) VALUES ('admin', 'admin123', 'Administrador', 1)")
         
-        # Lista de la familia extraída de la imagen
-      familiares = [
+        familiares = [
             ('emi', 'emi642', 'Emi'),
             ('laura', 'laura105', 'Laura'),
             ('nico', 'nico837', 'Nico'),
