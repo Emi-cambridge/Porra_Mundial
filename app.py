@@ -7,6 +7,28 @@ st.set_page_config(page_title="Porra Mundial Familiar", page_icon="⚽", layout=
 
 DB_NAME = "polla_mundial_v2.db"
 
+# --- DICCIONARIO DE ASIGNACIÓN DE PAÍSES Y BANDERAS ---
+# Mapea el 'username' de la base de datos con su bandera y país
+BANDERAS_FAMILIA = {
+    'admin': "🛠️ Admin (Organizador)",
+    'emi': "🇪🇸 España",
+    'laura': "🇦🇷 Argentina",
+    'nico': "🇧🇷 Brasil",
+    'lorenzo': "🇲🇽 México",
+    'fatima': "🇫🇷 Francia",
+    'tamara': "🇩🇪 Alemania",
+    'irma': "🇨🇴 Colombia",
+    'miguel': "🇮🇹 Italia",
+    'sara': "🇵🇹 Portugal",
+    'omar': "🇺🇾 Uruguay",
+    'monica': "🇬🇧 Inglaterra",
+    'clara': "🇧🇪 Bélgica",
+    'catis': "🇳🇱 Países Bajos",
+    'sebas': "🇺🇸 Estados Unidos",
+    'maria_f': "🇨🇦 Canadá",
+    'gloria': "🇲🇦 Marruecos"
+}
+
 # --- FUNCIONES DE BASE DE DATOS ---
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
@@ -47,7 +69,6 @@ def init_db():
     # 1. INYECCIÓN AUTOMÁTICA DE FAMILIARES CON CONTRASEÑAS ALEATORIAS
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
-        # Administrador principal
         cursor.execute("INSERT INTO usuarios (username, password, nombre, es_admin) VALUES ('admin', 'admin123', 'Administrador', 1)")
         
         familiares = [
@@ -74,7 +95,6 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM partidos")
     if cursor.fetchone()[0] == 0:
         partidos_mundial = [
-            # JORNADA 1
             ("México", "Sudáfrica", "Grupo A - 11-Jun"),
             ("Corea del Sur", "República Checa", "Grupo A - 11-Jun"),
             ("Canadá", "Bosnia y Herzegovina", "Grupo B - 12-Jun"),
@@ -100,7 +120,6 @@ def init_db():
             ("Inglaterra", "Croacia", "Grupo L - 17-Jun"),
             ("Ghana", "Panamá", "Grupo L - 17-Jun"),
             
-            # JORNADA 2
             ("República Checa", "Sudáfrica", "Grupo A - 18-Jun"),
             ("Suiza", "Bosnia y Herzegovina", "Grupo B - 18-Jun"),
             ("Canadá", "Catar", "Grupo B - 18-Jun"),
@@ -122,26 +141,25 @@ def init_db():
         
     conn.commit()
     conn.close()
-# Inicializar Base de Datos inmediatamente al cargar
+
 init_db()
 
 # --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
 def calcular_clasificacion():
-    """Calcula el ranking dinámico sumando los puntos de cada apuesta."""
+    """Calcula el ranking dinámico sumando los puntos de cada apuesta e incluye la selección."""
     conn = get_db_connection()
-    usuarios = conn.execute("SELECT id, nombre FROM usuarios WHERE es_admin = 0").fetchall()
+    usuarios = conn.execute("SELECT id, username, nombre FROM usuarios WHERE es_admin = 0").fetchall()
     partidos = conn.execute("SELECT id, goles1, goles2 FROM partidos WHERE jugado = 1").fetchall()
     apuestas = conn.execute("SELECT usuario_id, partido_id, goles1, goles2 FROM apuestas").fetchall()
     conn.close()
     
-    # Mapear apuestas para búsqueda rápida: (usuario_id, partido_id) -> (goles1, goles2)
     apuestas_map = {(a['usuario_id'], a['partido_id']): (a['goles1'], a['goles2']) for a in apuestas}
     
     ranking = []
     for u in usuarios:
         puntos_totales = 0
-        plenos = 0         # 3 puntos
-        aciertos_signo = 0 # 1 punto
+        plenos = 0         
+        aciertos_signo = 0 
         
         for p in partidos:
             p_id = p['id']
@@ -150,19 +168,21 @@ def calcular_clasificacion():
             if (u['id'], p_id) in apuestas_map:
                 g_bet1, g_bet2 = apuestas_map[(u['id'], p_id)]
                 
-                # 1. Resultado exacto (Pleno) -> 3 Puntos
                 if g_real1 == g_bet1 and g_real2 == g_bet2:
                     puntos_totales += 3
                     plenos += 1
-                # 2. Acierto de Ganador o Empate -> 1 Punto
                 elif (g_real1 > g_real2 and g_bet1 > g_bet2) or \
                      (g_real1 < g_real2 and g_bet1 < g_bet2) or \
                      (g_real1 == g_real2 and g_bet1 == g_bet2):
                     puntos_totales += 1
                     aciertos_signo += 1
+        
+        # Obtener la selección asignada o un emoji por defecto si se añade un usuario nuevo sin registrar en el diccionario
+        seleccion = BANDERAS_FAMILIA.get(u['username'], "🏳️ Sin País")
                     
         ranking.append({
             "Familiar": u['nombre'],
+            "Selección Asignada": seleccion,
             "Puntos Totales": puntos_totales,
             "Plenos (3 pts)": plenos,
             "Aciertos Signo (1 pt)": aciertos_signo
@@ -171,7 +191,7 @@ def calcular_clasificacion():
     df = pd.DataFrame(ranking)
     if not df.empty:
         df = df.sort_values(by="Puntos Totales", ascending=False).reset_index(drop=True)
-        df.index += 1  # La posición empieza en 1
+        df.index += 1  
     return df
 
 # --- CONTROL DE SESIÓN (LOGIN) ---
@@ -203,7 +223,6 @@ if not st.session_state.logged_in:
             else:
                 st.error("Usuario o contraseña incorrectos.")
 else:
-    # --- MENÚ DE NAVEGACIÓN ---
     st.sidebar.title(f"👋 ¡Hola, {st.session_state.nombre}!")
     
     opciones_menu = ["🏆 Clasificación", "📝 Mis Apuestas"]
@@ -219,7 +238,7 @@ else:
     # --- PANTALLA: CLASIFICACIÓN ---
     if menu == "🏆 Clasificación":
         st.title("🏆 Clasificación de la Familia")
-        st.write("Aquí puedes ver quién va liderando la porra mundialista.")
+        st.write("Aquí puedes ver quién va liderando la porra mundialista y el país al que representa.")
         
         tabla_puntos = calcular_clasificacion()
         if not tabla_puntos.empty:
@@ -233,9 +252,7 @@ else:
         st.write("Introduce o modifica tus resultados aquí. Se guardarán automáticamente al pulsar el botón.")
         
         conn = get_db_connection()
-        # Partidos activos (que no han terminado)
         partidos = conn.execute("SELECT * FROM partidos WHERE jugado = 0").fetchall()
-        # Obtener apuestas previas del usuario actual
         apuestas_usuario = {a['partido_id']: (a['goles1'], a['goles2']) for a in conn.execute("SELECT partido_id, goles1, goles2 FROM apuestas WHERE usuario_id = ?", (st.session_state.user_id,)).fetchall()}
         conn.close()
         
@@ -243,12 +260,10 @@ else:
             st.info("No hay partidos abiertos para apostar en este momento.")
         else:
             for p in partidos:
-                # Contenedor visual moderno para cada partido
                 with st.container(border=True):
                     st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
                     st.caption(f"📅 {p['fecha']}")
                     
-                    # Valores por defecto si ya existía una apuesta previa
                     def_g1, def_g2 = (0, 0)
                     if p['id'] in apuestas_usuario:
                         def_g1, def_g2 = apuestas_usuario[p['id']]
@@ -260,7 +275,7 @@ else:
                     with col2:
                         g2 = st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p['id']}")
                     with col3:
-                        st.write("") # Espaciadores
+                        st.write("") 
                         st.write("")
                         if st.button("Guardar Pronóstico", key=f"btn_{p['id']}", use_container_width=True):
                             conn = get_db_connection()
@@ -277,10 +292,9 @@ else:
         
         tab1, tab2, tab3 = st.tabs(["Cerrar Partidos", "Añadir Partidos", "Añadir Familiares"])
         
-        # Pestaña 1: Introducir resultados reales
         with tab1:
             st.subheader("Introducir Resultados Reales")
-            st.write("Cuando un partido finalice, introduce aquí el resultado definitivo. Al hacerlo, el sistema bloqueará las apuestas para ese partido y recalculará los puntos automáticamente.")
+            st.write("Cuando un partido finalice, introduce aquí el resultado definitivo.")
             
             conn = get_db_connection()
             partidos_activos = conn.execute("SELECT * FROM partidos WHERE jugado = 0").fetchall()
@@ -308,7 +322,6 @@ else:
                                 st.success("Partido cerrado. ¡Puntos actualizados!")
                                 st.rerun()
                                 
-        # Pestaña 2: Crear nuevos partidos
         with tab2:
             st.subheader("Registrar Nuevo Partido")
             with st.form("nuevo_partido_form"):
@@ -325,7 +338,6 @@ else:
                     st.success(f"Partido {eq1} vs {eq2} añadido con éxito.")
                     st.rerun()
                     
-        # Pestaña 3: Crear cuentas a familiares
         with tab3:
             st.subheader("Registrar un Miembro de la Familia")
             st.write("Crea las cuentas aquí para que tu familia no necesite registrarse públicamente.")
