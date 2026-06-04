@@ -5,7 +5,7 @@ import pandas as pd
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundial Familiar", page_icon="⚽", layout="centered")
 
-DB_NAME = "porra_mundial.db"
+DB_NAME = "polla_mundial_v2.db"
 
 # --- FUNCIONES DE BASE DE DATOS ---
 def get_db_connection():
