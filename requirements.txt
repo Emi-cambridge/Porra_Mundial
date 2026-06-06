@@ -1,2 +1,2 @@
-st-theme
-streamlit-gsheets-connection
+streamlit
+streamlit-google-sheets-connection
