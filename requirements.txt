@@ -1,2 +1,2 @@
-streamlit
-streamlit-google-sheets-connection
+pandas
+requests
