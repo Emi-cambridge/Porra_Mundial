@@ -1,30 +1,17 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundial Familiar", page_icon="⚽", layout="centered")
 
-# --- CONFIGURACIÓN DE TU GOOGLE SHEET (CONEXIÓN NATIVA REFORZADA) ---
-SPREADSHEET_ID = "1Tc-Hm2tlU1_1w77AVDaPyD_tmopg22u-a5ov2zBm8gQ"
+# --- CONEXIÓN OFICIAL Y ENCRIPTADA A GOOGLE SHEETS ---
+# Utiliza las credenciales de Secrets. Nadie más que el servidor puede ver los datos.
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-def leer_tabla_nativa(pestana):
-    """Lee datos en tiempo real de Google Sheets evitando problemas de caché de manera compatible."""
-    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet={pestana}"
-    try:
-        # Generamos un identificador único de sesión usando st.session_state para saltarnos la caché de Google
-        if "cache_key" not in st.session_state:
-            import random
-            st.session_state.cache_key = random.randint(1000, 9999)
-            
-        url_fresca = f"{url}&cache_bust={st.session_state.cache_key}"
-        df = pd.read_csv(url_fresca, sep=',')
-        
-        # Limpiar columnas vacías si las hay
-        df = df.dropna(how='all', axis=1)
-        return df
-    except Exception as e:
-        st.error(f"Error al conectar con la pestaña {pestana}: {e}")
-        return pd.DataFrame()
+def leer_tabla(pestana):
+    """Lee datos en tiempo real de forma segura sin almacenamiento en caché."""
+    return conn.read(worksheet=pestana, ttl=0)
 
 # --- DICCIONARIO DE ASIGNACIÓN DE PAÍSES Y BANDERAS ---
 BANDERAS_FAMILIA = {
@@ -56,20 +43,17 @@ BANDERAS_FAMILIA = {
 
 # --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
 def calcular_clasificacion():
-    """Calcula el ranking dinámico leyendo directamente de las pestañas del Google Sheet."""
-    df_usuarios = leer_tabla_nativa("usuarios")
-    df_partidos = leer_tabla_nativa("partidos")
-    df_apuestas = leer_tabla_nativa("apuestas")
+    """Calcula el ranking dinámico leyendo directamente de Google Sheets."""
+    df_usuarios = leer_tabla("usuarios")
+    df_partidos = leer_tabla("partidos")
+    df_apuestas = leer_tabla("apuestas")
     
     if df_usuarios.empty or df_partidos.empty:
         return pd.DataFrame()
         
-    # Filtrar usuarios que no son admin
     usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
-    # Partidos que ya se jugaron
     partidos_jugados = df_partidos[df_partidos['jugado'] == 1]
     
-    # Mapear apuestas para búsqueda rápida: (usuario_id, partido_id) -> (goles1, goles2)
     apuestas_map = {}
     if not df_apuestas.empty:
         for _, row in df_apuestas.iterrows():
@@ -89,15 +73,11 @@ def calcular_clasificacion():
             p_id = int(p['id'])
             try:
                 g_real1, g_real2 = int(p['goles1']), int(p['goles2'])
-                
                 if (u_id, p_id) in apuestas_map:
                     g_bet1, g_bet2 = apuestas_map[(u_id, p_id)]
-                    
-                    # Resultado exacto (Pleno)
                     if g_real1 == g_bet1 and g_real2 == g_bet2:
                         puntos_totales += 3
                         plenos += 1
-                    # Ganador o empate (Signo)
                     elif (g_real1 > g_real2 and g_bet1 > g_bet2) or \
                          (g_real1 < g_real2 and g_bet1 < g_bet2) or \
                          (g_real1 == g_real2 and g_bet1 == g_bet2):
@@ -107,7 +87,6 @@ def calcular_clasificacion():
                 continue
         
         seleccion = BANDERAS_FAMILIA.get(u['username'], "🏳️ Sin País")
-                    
         ranking.append({
             "Familiar": u['nombre'],
             "Selección Asignada": seleccion,
@@ -127,7 +106,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.title("⚽ Porra Mundialista 2026")
+    st.title("⚽ Polla Mundial 2026")
     st.subheader("Inicia sesión para participar")
     
     with st.form("login_form"):
@@ -136,9 +115,8 @@ if not st.session_state.logged_in:
         botón_login = st.form_submit_button("Entrar")
         
         if botón_login:
-            df_usuarios = leer_tabla_nativa("usuarios")
+            df_usuarios = leer_tabla("usuarios")
             if not df_usuarios.empty:
-                # Normalizar columnas para evitar fallos de espacios o mayúsculas
                 df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
                 user_row = df_usuarios[(df_usuarios['username'].astype(str).str.strip().str.lower() == username) & 
                                        (df_usuarios['password'].astype(str).str.strip() == str(password).strip())]
@@ -155,7 +133,7 @@ if not st.session_state.logged_in:
                 else:
                     st.error("Usuario o contraseña incorrectos.")
             else:
-                st.error("Error al conectar con la base de datos central en Google Sheets.")
+                st.error("Error al conectar de forma segura con Google Sheets.")
 else:
     st.sidebar.title(f"👋 ¡Hola, {st.session_state.nombre}!")
     opciones_menu = ["🏆 Clasificación", "📝 Mis Apuestas"]
@@ -177,18 +155,33 @@ else:
         if not tabla_puntos.empty:
             st.dataframe(tabla_puntos, use_container_width=True)
         else:
-            st.info("Aún no hay puntos calculados o la hoja está vacía. ¡Los puntos aparecerán cuando arranquen los partidos!")
+            st.info("Aún no hay puntos calculados. ¡Aparecerán cuando el administrador cierre los primeros partidos!")
 
     # --- PANTALLA: MIS APUESTAS ---
     elif menu == "📝 Mis Apuestas":
         st.title("📝 Tus Pronósticos")
-        st.write("Introduce tus apuestas y guárdalas directamente en el documento de control central.")
+        st.write("Introduce tus resultados y haz clic en **Guardar Apuesta**. Tus datos se almacenarán de forma privada a la espera de los partidos reales.")
         
-        df_partidos = leer_tabla_nativa("partidos")
+        df_partidos = leer_tabla("partidos")
+        df_apuestas = leer_tabla("apuestas")
+        
         if df_partidos.empty:
             st.warning("No se ha podido cargar el calendario de partidos.")
         else:
             partidos_activos = df_partidos[df_partidos['jugado'] == 0]
+            
+            # Mapear apuestas del usuario activo para mostrarlas en pantalla si ya existen
+            apuestas_usuario = {}
+            if not df_apuestas.empty:
+                # Asegurar nombres de columnas limpios
+                df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
+                df_u_apuestas = df_apuestas[df_apuestas['usuario_id'].astype(int) == st.session_state.user_id]
+                for _, row in df_u_apuestas.iterrows():
+                    try:
+                        apuestas_usuario[int(row['partido_id'])] = (int(row['goles1']), int(row['goles2']))
+                    except:
+                        continue
+            
             if partidos_activos.empty:
                 st.info("No hay partidos abiertos para apostar en este momento.")
             else:
@@ -198,10 +191,86 @@ else:
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
                         st.caption(f"📅 {p['fecha']}")
                         
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.number_input(f"Goles {p['equipo1']}", min_value=0, max_value=20, value=0, key=f"g1_{p_id}")
-                        with col2:
-                            st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=0, key=f"g2_{p_id}")
+                        def_g1, def_g2 = 0, 0
+                        if p_id in apuestas_usuario:
+                            def_g1, def_g2 = apuestas_usuario[p_id]
+                            st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Ya tienes una apuesta guardada para este partido.</span>", unsafe_allow_html=True)
                         
-                        st.link_button("Modificar directamente en la Hoja Central", f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit", use_container_width=True)
+                        col1, col2, col3 = st.columns([2, 2, 3])
+                        with col1:
+                            g1 = st.number_input(f"Goles {p['equipo1']}", min_value=0, max_value=20, value=def_g1, key=f"g1_{p_id}")
+                        with col2:
+                            g2 = st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p_id}")
+                        with col3:
+                            st.write("")
+                            st.write("")
+                            if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
+                                # Volver a leer la tabla completa para evitar sobreescribir datos de otros familiares
+                                df_apuestas_completo = leer_tabla("apuestas")
+                                df_apuestas_completo.columns = df_apuestas_completo.columns.str.strip().str.lower()
+                                
+                                # Buscar si el usuario ya tenía fila para este partido
+                                fila_existente = df_apuestas_completo[
+                                    (df_apuestas_completo['usuario_id'].astype(int) == st.session_state.user_id) & 
+                                    (df_apuestas_completo['partido_id'].astype(int) == p_id)
+                                ]
+                                
+                                if not fila_existente.empty:
+                                    df_apuestas_completo.loc[fila_existente.index, ['goles1', 'goles2']] = [int(g1), int(g2)]
+                                else:
+                                    nueva_fila = pd.DataFrame([{"usuario_id": int(st.session_state.user_id), "partido_id": int(p_id), "goles1": int(g1), "goles2": int(g2)}])
+                                    df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
+                                
+                                # Guardar de forma invisible en Google Sheets
+                                conn.update(worksheet="apuestas", data=df_apuestas_completo)
+                                st.success("¡Apuesta guardada con éxito!")
+                                st.rerun()
+
+    # --- PANTALLA: PANEL ADMINISTRADOR ---
+    elif menu == "⚙️ Panel Administrador":
+        st.title("⚙️ Panel de Control (Admin)")
+        tab1, tab2 = st.tabs(["Cerrar Partidos con Resultados Reales", "Añadir Nuevos Partidos"])
+        
+        with tab1:
+            st.subheader("Introducir Resultados Reales")
+            df_partidos = leer_tabla("partidos")
+            partidos_activos = df_partidos[df_partidos['jugado'] == 0]
+            
+            if partidos_activos.empty:
+                st.info("No hay partidos pendientes de cerrar.")
+            else:
+                for _, p in partidos_activos.iterrows():
+                    p_id = int(p['id'])
+                    with st.container(border=True):
+                        st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
+                        c1, c2, c3 = st.columns([2, 2, 3])
+                        with c1:
+                            res1 = st.number_input(f"Resultado {p['equipo1']}", min_value=0, max_value=20, value=0, key=f"res1_{p_id}")
+                        with c2:
+                            res2 = st.number_input(f"Resultado {p['equipo2']}", min_value=0, max_value=20, value=0, key=f"res2_{p_id}")
+                        with c3:
+                            st.write("")
+                            st.write("")
+                            if st.button("Finalizar Partido", key=f"fin_{p_id}", use_container_width=True):
+                                df_partidos_completo = leer_tabla("partidos")
+                                df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [res1, res2, 1]
+                                conn.update(worksheet="partidos", data=df_partidos_completo)
+                                st.success("Partido cerrado. Puntos calculados en la Clasificación.")
+                                st.rerun()
+                                
+        with tab2:
+            st.subheader("Registrar Nuevo Partido")
+            with st.form("nuevo_partido_form"):
+                eq1 = st.text_input("Equipo Local")
+                eq2 = st.text_input("Equipo Visitante")
+                fecha_partido = st.text_input("Fecha / Fase")
+                check_partido = st.form_submit_button("Crear Partido")
+                
+                if check_partido and eq1 and eq2:
+                    df_partidos_completo = leer_tabla("partidos")
+                    nuevo_id = int(df_partidos_completo['id'].max() + 1) if not df_partidos_completo.empty else 1
+                    nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "goles1": "", "goles2": "", "jugado": 0}])
+                    df_partidos_completo = pd.concat([df_partidos_completo, nueva_fila], ignore_index=True)
+                    conn.update(worksheet="partidos", data=df_partidos_completo)
+                    st.success("Partido añadido con éxito.")
+                    st.rerun()
