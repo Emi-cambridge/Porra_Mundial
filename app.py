@@ -127,7 +127,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.title("⚽ Polla Mundial 2026")
+    st.title("⚽ Porra Mundial 2026")
     st.subheader("Inicia sesión para participar")
     
     with st.form("login_form"):
