@@ -1,31 +1,30 @@
 import streamlit as st
 import pandas as pd
-import requests
 
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundial Familiar", page_icon="⚽", layout="centered")
 
 # --- CONFIGURACIÓN DE TU GOOGLE SHEET (CONEXIÓN NATIVA REFORZADA) ---
-# Extraemos el ID único de tu hoja de cálculo
 SPREADSHEET_ID = "1Tc-Hm2tlU1_1w77AVDaPyD_tmopg22u-a5ov2zBm8gQ"
 
 def leer_tabla_nativa(pestana):
-    """Lee datos en tiempo real directamente convirtiendo el Google Sheet en un CSV público/accesible."""
+    """Lee datos en tiempo real de Google Sheets evitando problemas de caché de manera compatible."""
     url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet={pestana}"
     try:
-        # Añadimos un parámetro aleatorio para saltarnos la caché de Streamlit y leer datos frescos
-        df = pd.read_csv(f"{url}&cache_bust={st.runtime.scriptrunner.script_run_context.get_script_run_ctx().session_id if st.runtime.scriptrunner.script_run_context.get_script_run_ctx() else 0}", sep=',')
+        # Generamos un identificador único de sesión usando st.session_state para saltarnos la caché de Google
+        if "cache_key" not in st.session_state:
+            import random
+            st.session_state.cache_key = random.randint(1000, 9999)
+            
+        url_fresca = f"{url}&cache_bust={st.session_state.cache_key}"
+        df = pd.read_csv(url_fresca, sep=',')
+        
         # Limpiar columnas vacías si las hay
         df = df.dropna(how='all', axis=1)
         return df
     except Exception as e:
         st.error(f"Error al conectar con la pestaña {pestana}: {e}")
         return pd.DataFrame()
-
-def guardar_apuesta_nativa(usuario_id, partido_id, goles1, goles2):
-    """Envía la apuesta de vuelta utilizando un formulario o webhook. 
-    Para entornos sencillos sin st.connection, puedes gestionar las actualizaciones mediante API."""
-    st.info("Para escribir datos directamente usando este método nativo simplificado, utilizaremos la URL de edición.")
 
 # --- DICCIONARIO DE ASIGNACIÓN DE PAÍSES Y BANDERAS ---
 BANDERAS_FAMILIA = {
@@ -139,7 +138,7 @@ if not st.session_state.logged_in:
         if botón_login:
             df_usuarios = leer_tabla_nativa("usuarios")
             if not df_usuarios.empty:
-                # Normalizar columnas para evitar fallos de mayúsculas
+                # Normalizar columnas para evitar fallos de espacios o mayúsculas
                 df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
                 user_row = df_usuarios[(df_usuarios['username'].astype(str).str.strip().str.lower() == username) & 
                                        (df_usuarios['password'].astype(str).str.strip() == str(password).strip())]
@@ -183,7 +182,7 @@ else:
     # --- PANTALLA: MIS APUESTAS ---
     elif menu == "📝 Mis Apuestas":
         st.title("📝 Tus Pronósticos")
-        st.write("Para asegurar la máxima estabilidad sin errores de dependencias, introduce tus apuestas y envíalas directamente.")
+        st.write("Introduce tus apuestas y guárdalas directamente en el documento de control central.")
         
         df_partidos = leer_tabla_nativa("partidos")
         if df_partidos.empty:
@@ -205,5 +204,4 @@ else:
                         with col2:
                             st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=0, key=f"g2_{p_id}")
                         
-                        # Enlace directo para interactuar si fuera necesario
                         st.link_button("Modificar directamente en la Hoja Central", f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit", use_container_width=True)
