@@ -186,7 +186,7 @@ else:
                 meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                          "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
-                # --- NUEVO: SELECTOR DE FILTRO DE PARTIDOS ---
+                # Selector de filtro de partidos
                 filtro = st.selectbox(
                     "🔍 Filtrar partidos por estado:",
                     ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS"]
@@ -196,7 +196,7 @@ else:
                     p_id = int(p['id'])
                     tiene_apuesta = p_id in apuestas_usuario
                     
-                    # --- FILTRADO DINÁMICO EN TIEMPO REAL ---
+                    # Filtrado dinámico en tiempo real
                     if filtro == "Solo partidos PENDIENTES" and tiene_apuesta:
                         continue
                     if filtro == "Solo partidos GUARDADOS" and not tiene_apuesta:
@@ -223,93 +223,4 @@ else:
                             bloqueado_por_fecha = False
 
                     with st.container(border=True):
-                        st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
-                        st.caption(f"📅 Fecha del encuentro: {p['fecha']}")
-                        
-                        def_g1, def_g2 = 0, 0
-                        if tiene_apuesta:
-                            def_g1, def_g2 = apuestas_usuario[p_id]
-                            if not bloqueado_por_fecha:
-                                st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
-                        
-                        if bloqueado_por_fecha:
-                            st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. El tiempo límite expiró el día anterior al partido.</span>", unsafe_allow_html=True)
-                            if tiene_apuesta:
-                                st.info(f"Tu pronóstico final guardado fue: **{def_g1} - {def_g2}**")
-                        
-                        col1, col2, col3 = st.columns([2, 2, 3])
-                        with col1:
-                            g1 = st.number_input(f"Goles {p['equipo1']}", min_value=0, max_value=20, value=def_g1, key=f"g1_{p_id}", disabled=bloqueado_por_fecha)
-                        with col2:
-                            g2 = st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p_id}", disabled=bloqueado_por_fecha)
-                        with col3:
-                            st.write("")
-                            st.write("")
-                            if not bloqueado_por_fecha:
-                                if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
-                                    df_apuestas_completo = leer_tabla("apuestas")
-                                    df_apuestas_completo.columns = df_apuestas_completo.columns.str.strip().str.lower()
-                                    
-                                    fila_existente = df_apuestas_completo[
-                                        (df_apuestas_completo['usuario_id'].astype(int) == st.session_state.user_id) & 
-                                        (df_apuestas_completo['partido_id'].astype(int) == p_id)
-                                    ]
-                                    
-                                    if not fila_existente.empty:
-                                        df_apuestas_completo.loc[fila_existente.index, ['goles1', 'goles2']] = [int(g1), int(g2)]
-                                    else:
-                                        nueva_fila = pd.DataFrame([{"usuario_id": int(st.session_state.user_id), "partido_id": int(p_id), "goles1": int(g1), "goles2": int(g2)}])
-                                        df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
-                                    
-                                    conn.update(worksheet="apuestas", data=df_apuestas_completo)
-                                    st.success("¡Apuesta guardada con éxito!")
-                                    st.rerun()
-
-    # --- PANTALLA: PANEL ADMINISTRADOR ---
-    elif menu == "⚙️ Panel Administrador":
-        st.title("⚙️ Panel de Control (Admin)")
-        tab1, tab2 = st.tabs(["Cerrar Partidos con Resultados Reales", "Añadir Nuevos Partidos"])
-        
-        with tab1:
-            st.subheader("Introducir Resultados Reales")
-            df_partidos = leer_tabla("partidos")
-            partidos_activos = df_partidos[df_partidos['jugado'] == 0]
-            
-            if partidos_activos.empty:
-                st.info("No hay partidos pendientes de cerrar.")
-            else:
-                for _, p in partidos_activos.iterrows():
-                    p_id = int(p['id'])
-                    with st.container(border=True):
-                        st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
-                        c1, c2, c3 = st.columns([2, 2, 3])
-                        with c1:
-                            res1 = st.number_input(f"Resultado {p['equipo1']}", min_value=0, max_value=20, value=0, key=f"res1_{p_id}")
-                        with c2:
-                            res2 = st.number_input(f"Resultado {p['equipo2']}", min_value=0, max_value=20, value=0, key=f"res2_{p_id}")
-                        with c3:
-                            st.write("")
-                            st.write("")
-                            if st.button("Finalizar Partido", key=f"fin_{p_id}", use_container_width=True):
-                                df_partidos_completo = leer_tabla("partidos")
-                                df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [res1, res2, 1]
-                                conn.update(worksheet="partidos", data=df_partidos_completo)
-                                .success("Partido cerrado. Puntos calculados en la Clasificación.")
-                                st.rerun()
-                                
-        with tab2:
-            st.subheader("Registrar Nuevo Partido")
-            with st.form("nuevo_partido_form"):
-                eq1 = st.text_input("Equipo Local")
-                eq2 = st.text_input("Equipo Visitante")
-                fecha_partido = st.text_input("Fecha (Ej: 15-Jun)")
-                check_partido = st.form_submit_button("Crear Partido")
-                
-                if check_partido and eq1 and eq2:
-                    df_partidos_completo = leer_tabla("partidos")
-                    nuevo_id = int(df_partidos_completo['id'].max() + 1) if not df_partidos_completo.empty else 1
-                    nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "goles1": "", "goles2": "", "jugado": 0}])
-                    df_partidos_completo = pd.concat([df_partidos_completo, nueva_fila], ignore_index=True)
-                    conn.update(worksheet="partidos", data=df_partidos_completo)
-                    st.success("Partido añadido con éxito.")
-                    st.rerun()
+                        st.write(f"**{p['equipo1']} vs {p
