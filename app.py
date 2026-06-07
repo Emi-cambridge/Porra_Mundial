@@ -157,10 +157,10 @@ else:
         else:
             st.info("Aún no hay puntos calculados. ¡Aparecerán cuando el administrador cierre los primeros partidos!")
 
-    # --- PANTALLA: MIS APUESTAS ---
+# --- PANTALLA: MIS APUESTAS ---
     elif menu == "📝 Mis Apuestas":
         st.title("📝 Tus Pronósticos")
-        st.write("Introduce tus resultados y haz clic en **Guardar Apuesta**. Tus datos se almacenarán de forma privada a la espera de los partidos reales.")
+        st.write("Introduce tus resultados y haz clic en **Guardar Apuesta**. Recuerda que el plazo máximo es el día anterior a cada partido.")
         
         df_partidos = leer_tabla("partidos")
         df_apuestas = leer_tabla("apuestas")
@@ -173,7 +173,6 @@ else:
             # Mapear apuestas del usuario activo para mostrarlas en pantalla si ya existen
             apuestas_usuario = {}
             if not df_apuestas.empty:
-                # Asegurar nombres de columnas limpios
                 df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
                 df_u_apuestas = df_apuestas[df_apuestas['usuario_id'].astype(int) == st.session_state.user_id]
                 for _, row in df_u_apuestas.iterrows():
@@ -185,8 +184,25 @@ else:
             if partidos_activos.empty:
                 st.info("No hay partidos abiertos para apostar en este momento.")
             else:
+                # Obtener la fecha actual del servidor (Formato: AAAA-MM-DD)
+                import datetime
+                hoy = datetime.date.today()
+                
                 for _, p in partidos_activos.iterrows():
                     p_id = int(p['id'])
+                    
+                    # Verificar si la columna fecha_limite existe en el Excel, si no, por defecto permite apostar
+                    bloqueado_por_fecha = False
+                    if 'fecha_limite' in p and pd.notna(p['fecha_limite']):
+                        try:
+                            # Convertimos el texto del Excel (AAAA-MM-DD) en una fecha real de Python
+                            limite = datetime.datetime.strptime(str(p['fecha_limite']).strip(), "%Y-%m-%d").date()
+                            if hoy > limite:
+                                bloqueado_por_fecha = True
+                        except Exception as e:
+                            # Si hay un fallo de formato en el Excel, no bloqueamos para evitar colgar la web
+                            bloqueado_por_fecha = False
+
                     with st.container(border=True):
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
                         st.caption(f"📅 {p['fecha']}")
@@ -194,38 +210,43 @@ else:
                         def_g1, def_g2 = 0, 0
                         if p_id in apuestas_usuario:
                             def_g1, def_g2 = apuestas_usuario[p_id]
-                            st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Ya tienes una apuesta guardada para este partido.</span>", unsafe_allow_html=True)
+                            if not bloqueado_por_fecha:
+                                st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes modificarla hasta el cierre.</span>", unsafe_allow_html=True)
+                        
+                        # Si está bloqueado por fecha, mostramos la alerta y desactivamos la edición
+                        if bloqueado_por_fecha:
+                            st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. No se permiten más apuestas o cambios para este partido.</span>", unsafe_allow_html=True)
+                            if p_id in apuestas_usuario:
+                                st.info(f"Tu pronóstico final guardado fue: **{def_g1} - {def_g2}**")
                         
                         col1, col2, col3 = st.columns([2, 2, 3])
                         with col1:
-                            g1 = st.number_input(f"Goles {p['equipo1']}", min_value=0, max_value=20, value=def_g1, key=f"g1_{p_id}")
+                            g1 = st.number_input(f"Goles {p['equipo1']}", min_value=0, max_value=20, value=def_g1, key=f"g1_{p_id}", disabled=bloqueado_por_fecha)
                         with col2:
-                            g2 = st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p_id}")
+                            g2 = st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p_id}", disabled=bloqueado_por_fecha)
                         with col3:
                             st.write("")
                             st.write("")
-                            if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
-                                # Volver a leer la tabla completa para evitar sobreescribir datos de otros familiares
-                                df_apuestas_completo = leer_tabla("apuestas")
-                                df_apuestas_completo.columns = df_apuestas_completo.columns.str.strip().str.lower()
-                                
-                                # Buscar si el usuario ya tenía fila para este partido
-                                fila_existente = df_apuestas_completo[
-                                    (df_apuestas_completo['usuario_id'].astype(int) == st.session_state.user_id) & 
-                                    (df_apuestas_completo['partido_id'].astype(int) == p_id)
-                                ]
-                                
-                                if not fila_existente.empty:
-                                    df_apuestas_completo.loc[fila_existente.index, ['goles1', 'goles2']] = [int(g1), int(g2)]
-                                else:
-                                    nueva_fila = pd.DataFrame([{"usuario_id": int(st.session_state.user_id), "partido_id": int(p_id), "goles1": int(g1), "goles2": int(g2)}])
-                                    df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
-                                
-                                # Guardar de forma invisible en Google Sheets
-                                conn.update(worksheet="apuestas", data=df_apuestas_completo)
-                                st.success("¡Apuesta guardada con éxito!")
-                                st.rerun()
-
+                            # Solo renderizamos el botón si el plazo está vigente
+                            if not bloqueado_por_fecha:
+                                if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
+                                    df_apuestas_completo = leer_tabla("apuestas")
+                                    df_apuestas_completo.columns = df_apuestas_completo.columns.str.strip().str.lower()
+                                    
+                                    fila_existente = df_apuestas_completo[
+                                        (df_apuestas_completo['usuario_id'].astype(int) == st.session_state.user_id) & 
+                                        (df_apuestas_completo['partido_id'].astype(int) == p_id)
+                                    ]
+                                    
+                                    if not fila_existente.empty:
+                                        df_apuestas_completo.loc[fila_existente.index, ['goles1', 'goles2']] = [int(g1), int(g2)]
+                                    else:
+                                        nueva_fila = pd.DataFrame([{"usuario_id": int(st.session_state.user_id), "partido_id": int(p_id), "goles1": int(g1), "goles2": int(g2)}])
+                                        df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
+                                    
+                                    conn.update(worksheet="apuestas", data=df_apuestas_completo)
+                                    st.success("¡Apuesta guardada con éxito!")
+                                    st.rerun()
     # --- PANTALLA: PANEL ADMINISTRADOR ---
     elif menu == "⚙️ Panel Administrador":
         st.title("⚙️ Panel de Control (Admin)")
