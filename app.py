@@ -3,8 +3,37 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import datetime
 
-# Configuración de la página web
-st.set_page_config(page_title="Porra Mundial Familiar", page_icon="⚽", layout="centered")
+# Configuración de la página web (Actualizado: Porra Mundialista)
+st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
+
+# --- ESTILOS CSS PARA HACER LA BARRA LATERAL Y BOTONES MÁS VISIBLES ---
+st.markdown("""
+    <style>
+        /* Hacer más visible el botón nativo para abrir/cerrar la barra lateral */
+        button[data-testid="stSidebarCollapseButton"] {
+            background-color: #f0f2f6 !important;
+            border: 2px solid #3498db !important;
+            border-radius: 8px !important;
+            padding: 5px !important;
+            transform: scale(1.2); /* Lo hace un 20% más grande */
+            margin-left: 10px !important;
+        }
+        
+        /* Modificar el texto de las opciones de radio en la barra lateral */
+        div[data-testid="stSidebar"] div[data-testid="stWidgetLabel"] {
+            font-size: 1.1rem !important;
+            font-weight: bold !important;
+        }
+        
+        /* Hacer más grandes y visibles los botones/opciones del menú lateral */
+        div[data-testid="stSidebar"] label[data-testid="stMarkdownContainer"] p {
+            font-size: 1.15rem !important;
+            font-weight: 600 !important;
+            color: #1a1a1a !important;
+            padding: 4px 0px !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- CONEXIÓN OFICIAL Y ENCRIPTADA A GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -58,11 +87,12 @@ def calcular_clasificacion():
             except:
                 continue
         
+        # Actualizado: "Aciertos (1 pt)"
         ranking.append({
             "Familiar": u['nombre'],
             "Puntos Totales": puntos_totales,
             "Plenos (3 pts)": plenos,
-            "Aciertos Signo (1 pt)": aciertos_signo
+            "Aciertos (1 pt)": aciertos_signo
         })
     
     df = pd.DataFrame(ranking)
@@ -108,7 +138,7 @@ else:
     st.sidebar.title(f"👋 ¡Hola, {st.session_state.nombre}!")
     opciones_menu = ["🏆 Clasificación", "📝 Mis Apuestas"]
     if st.session_state.es_admin == 1:
-        opciones_menu.append("⚙️ Panel Administrador")
+        opciones_menu.append("⚙️ Panel Administrator")
         
     menu = st.sidebar.radio("Ir a:", opciones_menu)
     
@@ -155,7 +185,6 @@ else:
             else:
                 hoy = datetime.date.today()
                 
-                # Mapeo de meses en inglés/español estándar para traducir el texto del Excel a número
                 meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                          "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
@@ -163,7 +192,6 @@ else:
                     p_id = int(p['id'])
                     bloqueado_por_fecha = False
                     
-                    # --- CÁLCULO AUTOMÁTICO DEL LÍMITE (1 DÍA ANTES) ---
                     if 'fecha' in p and pd.notna(p['fecha']):
                         try:
                             txt_fecha = str(p['fecha']).strip().lower()
@@ -171,13 +199,10 @@ else:
                             
                             if len(partes) == 2:
                                 dia_partido = int(partes[0])
-                                mes_texto = partes[1][:3] # Tomamos las 3 primeras letras del mes
-                                mes_partido = meses.get(mes_texto, 6) # CORREGIDO: Uso correcto de mes_texto (Por defecto Junio)
+                                mes_texto = partes[1][:3]
+                                mes_partido = meses.get(mes_texto, 6)
                                 
-                                # Creamos la fecha del partido real en el año 2026
                                 fecha_partido_real = datetime.date(2026, mes_partido, dia_partido)
-                                
-                                # El límite es exactamente un día antes del partido
                                 limite_apuesta = fecha_partido_real - datetime.timedelta(days=1)
                                 
                                 if hoy > limite_apuesta:
