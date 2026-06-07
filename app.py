@@ -3,7 +3,7 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import datetime
 
-# Configuración de la página web (Actualizado: Porra Mundialista)
+# Configuración de la página web
 st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
 
 # --- ESTILOS CSS PARA HACER LA BARRA LATERAL Y BOTONES MÁS VISIBLES ---
@@ -87,7 +87,6 @@ def calcular_clasificacion():
             except:
                 continue
         
-        # Actualizado: "Aciertos (1 pt)"
         ranking.append({
             "Familiar": u['nombre'],
             "Puntos Totales": puntos_totales,
@@ -138,7 +137,7 @@ else:
     st.sidebar.title(f"👋 ¡Hola, {st.session_state.nombre}!")
     opciones_menu = ["🏆 Clasificación", "📝 Mis Apuestas"]
     if st.session_state.es_admin == 1:
-        opciones_menu.append("⚙️ Panel Administrator")
+        opciones_menu.append("⚙️ Panel Administrador")
         
     menu = st.sidebar.radio("Ir a:", opciones_menu)
     
@@ -184,12 +183,25 @@ else:
                 st.info("No hay partidos abiertos para apostar en este momento.")
             else:
                 hoy = datetime.date.today()
-                
                 meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                          "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
+                # --- NUEVO: SELECTOR DE FILTRO DE PARTIDOS ---
+                filtro = st.selectbox(
+                    "🔍 Filtrar partidos por estado:",
+                    ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS"]
+                )
+                
                 for _, p in partidos_activos.iterrows():
                     p_id = int(p['id'])
+                    tiene_apuesta = p_id in apuestas_usuario
+                    
+                    # --- FILTRADO DINÁMICO EN TIEMPO REAL ---
+                    if filtro == "Solo partidos PENDIENTES" and tiene_apuesta:
+                        continue
+                    if filtro == "Solo partidos GUARDADOS" and not tiene_apuesta:
+                        continue
+                        
                     bloqueado_por_fecha = False
                     
                     if 'fecha' in p and pd.notna(p['fecha']):
@@ -215,14 +227,14 @@ else:
                         st.caption(f"📅 Fecha del encuentro: {p['fecha']}")
                         
                         def_g1, def_g2 = 0, 0
-                        if p_id in apuestas_usuario:
+                        if tiene_apuesta:
                             def_g1, def_g2 = apuestas_usuario[p_id]
                             if not bloqueado_por_fecha:
                                 st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
                         
                         if bloqueado_por_fecha:
                             st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. El tiempo límite expiró el día anterior al partido.</span>", unsafe_allow_html=True)
-                            if p_id in apuestas_usuario:
+                            if tiene_apuesta:
                                 st.info(f"Tu pronóstico final guardado fue: **{def_g1} - {def_g2}**")
                         
                         col1, col2, col3 = st.columns([2, 2, 3])
@@ -282,7 +294,7 @@ else:
                                 df_partidos_completo = leer_tabla("partidos")
                                 df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [res1, res2, 1]
                                 conn.update(worksheet="partidos", data=df_partidos_completo)
-                                st.success("Partido cerrado. Puntos calculados en la Clasificación.")
+                                .success("Partido cerrado. Puntos calculados en la Clasificación.")
                                 st.rerun()
                                 
         with tab2:
