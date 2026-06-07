@@ -9,23 +9,18 @@ st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="cent
 # --- ESTILOS CSS PARA HACER LA BARRA LATERAL Y BOTONES MÁS VISIBLES ---
 st.markdown("""
     <style>
-        /* Hacer más visible el botón nativo para abrir/cerrar la barra lateral */
         button[data-testid="stSidebarCollapseButton"] {
             background-color: #f0f2f6 !important;
             border: 2px solid #3498db !important;
             border-radius: 8px !important;
             padding: 5px !important;
-            transform: scale(1.2); /* Lo hace un 20% más grande */
+            transform: scale(1.2); 
             margin-left: 10px !important;
         }
-        
-        /* Modificar el texto de las opciones de radio en la barra lateral */
         div[data-testid="stSidebar"] div[data-testid="stWidgetLabel"] {
             font-size: 1.1rem !important;
             font-weight: bold !important;
         }
-        
-        /* Hacer más grandes y visibles los botones/opciones del menú lateral */
         div[data-testid="stSidebar"] label[data-testid="stMarkdownContainer"] p {
             font-size: 1.15rem !important;
             font-weight: 600 !important;
@@ -42,9 +37,9 @@ def leer_tabla(pestana):
     """Lee datos en tiempo real de forma segura sin almacenamiento en caché."""
     return conn.read(worksheet=pestana, ttl=0)
 
-# --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
+# --- LÓGICA DE PUNTOS Y CLASIFICACIÓN (CON MEDALLAS Y ESTRELLAS) ---
 def calcular_clasificacion():
-    """Calcula el ranking dinámico leyendo directamente de Google Sheets."""
+    """Calcula el ranking dinámico leyendo directamente de Google Sheets y añade iconos visuales."""
     df_usuarios = leer_tabla("usuarios")
     df_partidos = leer_tabla("partidos")
     df_apuestas = leer_tabla("apuestas")
@@ -96,9 +91,85 @@ def calcular_clasificacion():
     
     df = pd.DataFrame(ranking)
     if not df.empty:
-        df = df.sort_values(by="Puntos Totales", ascending=False).reset_index(drop=True)
+        # Ordenamos por Puntos Totales y luego por Plenos en caso de empate
+        df = df.sort_values(by=["Puntos Totales", "Plenos (3 pts)"], ascending=[False, False]).reset_index(drop=True)
+        
+        max_plenos = df["Plenos (3 pts)"].max()
+        
+        for idx in df.index:
+            nombre = df.at[idx, "Familiar"]
+            
+            # Añadir estrella al mayor número de plenos (siempre que tenga al menos 1)
+            if df.at[idx, "Plenos (3 pts)"] == max_plenos and max_plenos > 0:
+                nombre += " ⭐"
+                
+            # Añadir medallas al Top 3
+            if idx == 0:
+                nombre = "🥇 " + nombre
+            elif idx == 1:
+                nombre = "🥈 " + nombre
+            elif idx == 2:
+                nombre = "🥉 " + nombre
+                
+            df.at[idx, "Familiar"] = nombre
+            
         df.index += 1  
     return df
+
+# --- LÓGICA DE EVOLUCIÓN PARA EL GRÁFICO ---
+def generar_datos_evolucion():
+    """Genera un historial de puntos partido a partido para alimentar el gráfico de líneas."""
+    df_usuarios = leer_tabla("usuarios")
+    df_partidos = leer_tabla("partidos")
+    df_apuestas = leer_tabla("apuestas")
+    
+    if df_usuarios.empty or df_partidos.empty:
+        return pd.DataFrame()
+        
+    usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
+    # Ordenamos cronológicamente por ID del partido
+    partidos_jugados = df_partidos[df_partidos['jugado'] == 1].sort_values(by='id')
+    
+    apuestas_map = {}
+    if not df_apuestas.empty:
+        for _, row in df_apuestas.iterrows():
+            try:
+                apuestas_map[(int(row['usuario_id']), int(row['partido_id']))] = (int(row['goles1']), int(row['goles2']))
+            except:
+                continue
+                
+    historial = []
+    # Todos empiezan con 0 puntos
+    estado_actual = {u['nombre']: 0 for _, u in usuarios.iterrows()}
+    
+    for _, p in partidos_jugados.iterrows():
+        p_id = int(p['id'])
+        etiqueta_partido = f"P{p_id} ({p['equipo1'][:3]}-{p['equipo2'][:3]})"
+        try:
+            g_real1, g_real2 = int(p['goles1']), int(p['goles2'])
+            for _, u in usuarios.iterrows():
+                u_id = int(u['id'])
+                nombre = u['nombre']
+                if (u_id, p_id) in apuestas_map:
+                    g_bet1, g_bet2 = apuestas_map[(u_id, p_id)]
+                    if g_real1 == g_bet1 and g_real2 == g_bet2:
+                        estado_actual[nombre] += 3
+                    elif (g_real1 > g_real2 and g_bet1 > g_bet2) or \
+                         (g_real1 < g_real2 and g_bet1 < g_bet2) or \
+                         (g_real1 == g_real2 and g_bet1 == g_bet2):
+                        estado_actual[nombre] += 1
+        except:
+            pass
+            
+        # Guardamos una copia del estado de puntos tras finalizar este partido
+        historial.append({"Partido": etiqueta_partido, **estado_actual})
+        
+    if not historial:
+        return pd.DataFrame()
+        
+    df_hist = pd.DataFrame(historial)
+    df_hist = df_hist.set_index("Partido")
+    return df_hist
 
 # --- CONTROL DE SESIÓN (LOGIN) ---
 if 'logged_in' not in st.session_state:
@@ -153,6 +224,16 @@ else:
         tabla_puntos = calcular_clasificacion()
         if not tabla_puntos.empty:
             st.dataframe(tabla_puntos, use_container_width=True)
+            
+            # Renderizado del gráfico de evolución
+            st.divider()
+            st.subheader("📈 Evolución de los Puntos")
+            st.write("Sigue la carrera por el primer puesto partido a partido.")
+            df_evolucion = generar_datos_evolucion()
+            if not df_evolucion.empty:
+                st.line_chart(df_evolucion)
+            else:
+                st.info("El gráfico de evolución aparecerá en cuanto se cierre el primer partido.")
         else:
             st.info("Aún no hay puntos calculados. ¡Aparecerán cuando el administrador cierre los primeros partidos!")
 
@@ -186,7 +267,6 @@ else:
                 meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                          "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
-                # Selector de filtro de partidos
                 filtro = st.selectbox(
                     "🔍 Filtrar partidos por estado:",
                     ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS"]
@@ -196,7 +276,6 @@ else:
                     p_id = int(p['id'])
                     tiene_apuesta = p_id in apuestas_usuario
                     
-                    # Filtrado dinámico en tiempo real
                     if filtro == "Solo partidos PENDIENTES" and tiene_apuesta:
                         continue
                     if filtro == "Solo partidos GUARDADOS" and not tiene_apuesta:
@@ -277,7 +356,6 @@ else:
             if df_partidos.empty:
                 st.info("No hay partidos en el calendario.")
             else:
-                # --- NUEVO: SELECTOR DE FILTRO PARA EL ADMINISTRADOR ---
                 filtro_admin = st.selectbox(
                     "🔍 Filtrar partidos del panel:",
                     ["Solo partidos PENDIENTES de cerrar", "Solo partidos FINALIZADOS", "Mostrar todos los partidos"]
@@ -287,7 +365,6 @@ else:
                     p_id = int(p['id'])
                     es_jugado = int(p['jugado']) == 1
                     
-                    # Filtrado lógico del administrador
                     if filtro_admin == "Solo partidos PENDIENTES de cerrar" and es_jugado:
                         continue
                     if filtro_admin == "Solo partidos FINALIZADOS" and not es_jugado:
@@ -296,7 +373,6 @@ else:
                     with st.container(border=True):
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
                         
-                        # Cargar valores guardados en Google Sheets por defecto
                         def_res1 = int(p['goles1']) if es_jugado and pd.notna(p['goles1']) and str(p['goles1']).strip() != "" else 0
                         def_res2 = int(p['goles2']) if es_jugado and pd.notna(p['goles2']) and str(p['goles2']).strip() != "" else 0
                         
