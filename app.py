@@ -34,12 +34,12 @@ st.markdown("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def leer_tabla(pestana):
-    """Lee datos en tiempo real de forma segura sin almacenamiento en caché."""
-    return conn.read(worksheet=pestana, ttl=0)
+    """Lee datos aprovechando la caché durante 10 mins (600s) para evitar el bloqueo de API de Google."""
+    return conn.read(worksheet=pestana, ttl=600)
 
 # --- LÓGICA DE PUNTOS Y CLASIFICACIÓN (CON MEDALLAS Y ESTRELLAS) ---
 def calcular_clasificacion():
-    """Calcula el ranking dinámico leyendo directamente de Google Sheets y añade iconos visuales."""
+    """Calcula el ranking dinámico leyendo de la caché y añade iconos visuales."""
     df_usuarios = leer_tabla("usuarios")
     df_partidos = leer_tabla("partidos")
     df_apuestas = leer_tabla("apuestas")
@@ -91,7 +91,6 @@ def calcular_clasificacion():
     
     df = pd.DataFrame(ranking)
     if not df.empty:
-        # Ordenamos por Puntos Totales y luego por Plenos en caso de empate
         df = df.sort_values(by=["Puntos Totales", "Plenos (3 pts)"], ascending=[False, False]).reset_index(drop=True)
         
         max_plenos = df["Plenos (3 pts)"].max()
@@ -99,11 +98,9 @@ def calcular_clasificacion():
         for idx in df.index:
             nombre = df.at[idx, "Familiar"]
             
-            # Añadir estrella al mayor número de plenos (siempre que tenga al menos 1)
             if df.at[idx, "Plenos (3 pts)"] == max_plenos and max_plenos > 0:
                 nombre += " ⭐"
                 
-            # Añadir medallas al Top 3
             if idx == 0:
                 nombre = "🥇 " + nombre
             elif idx == 1:
@@ -127,7 +124,6 @@ def generar_datos_evolucion():
         return pd.DataFrame()
         
     usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
-    # Ordenamos cronológicamente por ID del partido
     partidos_jugados = df_partidos[df_partidos['jugado'] == 1].sort_values(by='id')
     
     apuestas_map = {}
@@ -139,7 +135,6 @@ def generar_datos_evolucion():
                 continue
                 
     historial = []
-    # Todos empiezan con 0 puntos
     estado_actual = {u['nombre']: 0 for _, u in usuarios.iterrows()}
     
     for _, p in partidos_jugados.iterrows():
@@ -161,7 +156,6 @@ def generar_datos_evolucion():
         except:
             pass
             
-        # Guardamos una copia del estado de puntos tras finalizar este partido
         historial.append({"Partido": etiqueta_partido, **estado_actual})
         
     if not historial:
@@ -225,7 +219,6 @@ else:
         if not tabla_puntos.empty:
             st.dataframe(tabla_puntos, use_container_width=True)
             
-            # Renderizado del gráfico de evolución
             st.divider()
             st.subheader("📈 Evolución de los Puntos")
             st.write("Sigue la carrera por el primer puesto partido a partido.")
@@ -341,6 +334,7 @@ else:
                                         df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
                                     
                                     conn.update(worksheet="apuestas", data=df_apuestas_completo)
+                                    st.cache_data.clear() # <- Limpia la caché al instante
                                     st.success("¡Apuesta guardada con éxito!")
                                     st.rerun()
 
@@ -394,6 +388,7 @@ else:
                                 df_partidos_completo = leer_tabla("partidos")
                                 df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [int(res1), int(res2), 1]
                                 conn.update(worksheet="partidos", data=df_partidos_completo)
+                                st.cache_data.clear() # <- Limpia la caché al instante
                                 st.success("¡Datos guardados y puntos actualizados!")
                                 st.rerun()
                                 
@@ -411,5 +406,6 @@ else:
                     nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "goles1": "", "goles2": "", "jugado": 0}])
                     df_partidos_completo = pd.concat([df_partidos_completo, nueva_fila], ignore_index=True)
                     conn.update(worksheet="partidos", data=df_partidos_completo)
+                    st.cache_data.clear() # <- Limpia la caché al instante
                     st.success("Partido añadido con éxito.")
                     st.rerun()
