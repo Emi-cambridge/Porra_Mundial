@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
+import datetime
 
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundial Familiar", page_icon="⚽", layout="centered")
 
 # --- CONEXIÓN OFICIAL Y ENCRIPTADA A GOOGLE SHEETS ---
-# Utiliza las credenciales de Secrets. Nadie más que el servidor puede ver los datos.
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def leer_tabla(pestana):
@@ -106,7 +106,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.title("⚽ Polla Mundial 2026")
+    st.title("⚽ Porra Mundialista 2026")
     st.subheader("Inicia sesión para participar")
     
     with st.form("login_form"):
@@ -157,10 +157,10 @@ else:
         else:
             st.info("Aún no hay puntos calculados. ¡Aparecerán cuando el administrador cierre los primeros partidos!")
 
-# --- PANTALLA: MIS APUESTAS ---
+    # --- PANTALLA: MIS APUESTAS ---
     elif menu == "📝 Mis Apuestas":
         st.title("📝 Tus Pronósticos")
-        st.write("Introduce tus resultados y haz clic en **Guardar Apuesta**. Recuerda que el plazo máximo es el día anterior a cada partido.")
+        st.write("Introduce tus resultados y haz clic en **Guardar Apuesta**. El plazo cierra definitivamente el día antes de cada partido.")
         
         df_partidos = leer_tabla("partidos")
         df_apuestas = leer_tabla("apuestas")
@@ -170,7 +170,6 @@ else:
         else:
             partidos_activos = df_partidos[df_partidos['jugado'] == 0]
             
-            # Mapear apuestas del usuario activo para mostrarlas en pantalla si ya existen
             apuestas_usuario = {}
             if not df_apuestas.empty:
                 df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
@@ -184,38 +183,51 @@ else:
             if partidos_activos.empty:
                 st.info("No hay partidos abiertos para apostar en este momento.")
             else:
-                # Obtener la fecha actual del servidor (Formato: AAAA-MM-DD)
-                import datetime
                 hoy = datetime.date.today()
+                
+                # Mapeo de meses en español para traducir el texto del Excel a número
+                meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
+                         "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
                 for _, p in partidos_activos.iterrows():
                     p_id = int(p['id'])
-                    
-                    # Verificar si la columna fecha_limite existe en el Excel, si no, por defecto permite apostar
                     bloqueado_por_fecha = False
-                    if 'fecha_limite' in p and pd.notna(p['fecha_limite']):
+                    
+                    # --- CÁLCULO AUTOMÁTICO DEL LÍMITE (1 DÍA ANTES) ---
+                    if 'fecha' in p and pd.notna(p['fecha']):
                         try:
-                            # Convertimos el texto del Excel (AAAA-MM-DD) en una fecha real de Python
-                            limite = datetime.datetime.strptime(str(p['fecha_limite']).strip(), "%Y-%m-%d").date()
-                            if hoy > limite:
-                                bloqueado_por_fecha = True
-                        except Exception as e:
-                            # Si hay un fallo de formato en el Excel, no bloqueamos para evitar colgar la web
+                            # Limpiamos el texto (ej: "11-Jun")
+                            txt_fecha = str(p['fecha']).strip().lower()
+                            partes = txt_fecha.split('-')
+                            
+                            if len(partes) == 2:
+                                dia_partido = int(partes[0])
+                                mes_texto = partes[1][:3] # Tomamos las 3 primeras letras del mes
+                                mes_partido = meses.get(mes_partido, 6) # Por defecto Junio si falla
+                                
+                                # Creamos la fecha del partido real en el año 2026
+                                fecha_partido_real = datetime.date(2026, mes_partido, dia_partido)
+                                
+                                # El límite es exactamente un día antes del partido
+                                limite_apuesta = fecha_partido_real - datetime.timedelta(days=1)
+                                
+                                if hoy > limite_apuesta:
+                                    bloqueado_por_fecha = True
+                        except:
                             bloqueado_por_fecha = False
 
                     with st.container(border=True):
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
-                        st.caption(f"📅 {p['fecha']}")
+                        st.caption(f"📅 Fecha del encuentro: {p['fecha']}")
                         
                         def_g1, def_g2 = 0, 0
                         if p_id in apuestas_usuario:
                             def_g1, def_g2 = apuestas_usuario[p_id]
                             if not bloqueado_por_fecha:
-                                st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes modificarla hasta el cierre.</span>", unsafe_allow_html=True)
+                                st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
                         
-                        # Si está bloqueado por fecha, mostramos la alerta y desactivamos la edición
                         if bloqueado_por_fecha:
-                            st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. No se permiten más apuestas o cambios para este partido.</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. El tiempo límite expiró el día anterior al partido.</span>", unsafe_allow_html=True)
                             if p_id in apuestas_usuario:
                                 st.info(f"Tu pronóstico final guardado fue: **{def_g1} - {def_g2}**")
                         
@@ -227,7 +239,6 @@ else:
                         with col3:
                             st.write("")
                             st.write("")
-                            # Solo renderizamos el botón si el plazo está vigente
                             if not bloqueado_por_fecha:
                                 if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
                                     df_apuestas_completo = leer_tabla("apuestas")
@@ -247,6 +258,7 @@ else:
                                     conn.update(worksheet="apuestas", data=df_apuestas_completo)
                                     st.success("¡Apuesta guardada con éxito!")
                                     st.rerun()
+
     # --- PANTALLA: PANEL ADMINISTRADOR ---
     elif menu == "⚙️ Panel Administrador":
         st.title("⚙️ Panel de Control (Admin)")
@@ -284,7 +296,7 @@ else:
             with st.form("nuevo_partido_form"):
                 eq1 = st.text_input("Equipo Local")
                 eq2 = st.text_input("Equipo Visitante")
-                fecha_partido = st.text_input("Fecha / Fase")
+                fecha_partido = st.text_input("Fecha (Ej: 15-Jun)")
                 check_partido = st.form_submit_button("Crear Partido")
                 
                 if check_partido and eq1 and eq2:
