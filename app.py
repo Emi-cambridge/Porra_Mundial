@@ -223,7 +223,6 @@ else:
                             bloqueado_por_fecha = False
 
                     with st.container(border=True):
-                        # CORREGIDO: Línea 226 restaurada por completo
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
                         st.caption(f"📅 Fecha del encuentro: {p['fecha']}")
                         
@@ -272,30 +271,54 @@ else:
         tab1, tab2 = st.tabs(["Cerrar Partidos con Resultados Reales", "Añadir Nuevos Partidos"])
         
         with tab1:
-            st.subheader("Introducir Resultados Reales")
+            st.subheader("Resultados de los Encuentros")
             df_partidos = leer_tabla("partidos")
-            partidos_activos = df_partidos[df_partidos['jugado'] == 0]
             
-            if partidos_activos.empty:
-                st.info("No hay partidos pendientes de cerrar.")
+            if df_partidos.empty:
+                st.info("No hay partidos en el calendario.")
             else:
-                for _, p in partidos_activos.iterrows():
+                # --- NUEVO: SELECTOR DE FILTRO PARA EL ADMINISTRADOR ---
+                filtro_admin = st.selectbox(
+                    "🔍 Filtrar partidos del panel:",
+                    ["Solo partidos PENDIENTES de cerrar", "Solo partidos FINALIZADOS", "Mostrar todos los partidos"]
+                )
+                
+                for _, p in df_partidos.iterrows():
                     p_id = int(p['id'])
+                    es_jugado = int(p['jugado']) == 1
+                    
+                    # Filtrado lógico del administrador
+                    if filtro_admin == "Solo partidos PENDIENTES de cerrar" and es_jugado:
+                        continue
+                    if filtro_admin == "Solo partidos FINALIZADOS" and not es_jugado:
+                        continue
+                    
                     with st.container(border=True):
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
+                        
+                        # Cargar valores guardados en Google Sheets por defecto
+                        def_res1 = int(p['goles1']) if es_jugado and pd.notna(p['goles1']) and str(p['goles1']).strip() != "" else 0
+                        def_res2 = int(p['goles2']) if es_jugado and pd.notna(p['goles2']) and str(p['goles2']).strip() != "" else 0
+                        
+                        if es_jugado:
+                            st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Partido Finalizado (Resultado guardado)</span>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("<span style='color: #f39c12; font-weight: bold;'>⏳ Pendiente de jugar / cerrar</span>", unsafe_allow_html=True)
+                            
                         c1, c2, c3 = st.columns([2, 2, 3])
                         with c1:
-                            res1 = st.number_input(f"Resultado {p['equipo1']}", min_value=0, max_value=20, value=0, key=f"res1_{p_id}")
+                            res1 = st.number_input(f"Resultado {p['equipo1']}", min_value=0, max_value=20, value=def_res1, key=f"res1_{p_id}")
                         with c2:
-                            res2 = st.number_input(f"Resultado {p['equipo2']}", min_value=0, max_value=20, value=0, key=f"res2_{p_id}")
+                            res2 = st.number_input(f"Resultado {p['equipo2']}", min_value=0, max_value=20, value=def_res2, key=f"res2_{p_id}")
                         with c3:
                             st.write("")
                             st.write("")
-                            if st.button("Finalizar Partido", key=f"fin_{p_id}", use_container_width=True):
+                            texto_boton = "Modificar Resultado" if es_jugado else "Finalizar Partido"
+                            if st.button(texto_boton, key=f"fin_{p_id}", use_container_width=True):
                                 df_partidos_completo = leer_tabla("partidos")
-                                df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [res1, res2, 1]
+                                df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [int(res1), int(res2), 1]
                                 conn.update(worksheet="partidos", data=df_partidos_completo)
-                                st.success("Partido cerrado. Puntos calculados en la Clasificación.")
+                                st.success("¡Datos guardados y puntos actualizados!")
                                 st.rerun()
                                 
         with tab2:
