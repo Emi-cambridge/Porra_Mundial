@@ -13,34 +13,6 @@ def leer_tabla(pestana):
     """Lee datos en tiempo real de forma segura sin almacenamiento en caché."""
     return conn.read(worksheet=pestana, ttl=0)
 
-# --- DICCIONARIO DE ASIGNACIÓN DE PAÍSES Y BANDERAS ---
-BANDERAS_FAMILIA = {
-    'admin': "🛠️ Admin (Organizador)",
-    'emi': "🇪🇸 España",
-    'laura': "🇦🇷 Argentina",
-    'nico': "🇧🇷 Brasil",
-    'lorenzo': "🇮🇹 Italia",
-    'fatima': "🇫🇷 Francia",
-    'tamara': "🇩🇪 Alemania",
-    'irma': "🇲🇽 México",
-    'miguel': "🇨🇴 Colombia",
-    'sara': "🇵🇹 Portugal",
-    'omar': "🇲🇦 Marruecos",
-    'monica': "🇬🇧 Inglaterra",
-    'clara': "🇧🇪 Bélgica",
-    'catis': "🇳🇱 Países Bajos",
-    'sebas': "🇺🇸 Estados Unidos",
-    'maria_f': "🇺🇾 Uruguay",
-    'gloria': "🇨🇱 Chile",
-    'mafe': "🇪🇨 Ecuador",
-    'javivi': "🇯🇵 Japón",
-    'jaime': "🇨🇦 Canadá",
-    'cristina': "🇭🇷 Croacia",
-    'andrea': "🇨🇭 Suiza",
-    'claudia': "🇰🇷 Corea del Sur",
-    'gerardo': "🇻🇪 Venezuela"
-}
-
 # --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
 def calcular_clasificacion():
     """Calcula el ranking dinámico leyendo directamente de Google Sheets."""
@@ -86,10 +58,8 @@ def calcular_clasificacion():
             except:
                 continue
         
-        seleccion = BANDERAS_FAMILIA.get(u['username'], "🏳️ Sin País")
         ranking.append({
             "Familiar": u['nombre'],
-            "Selección Asignada": seleccion,
             "Puntos Totales": puntos_totales,
             "Plenos (3 pts)": plenos,
             "Aciertos Signo (1 pt)": aciertos_signo
@@ -185,7 +155,7 @@ else:
             else:
                 hoy = datetime.date.today()
                 
-                # Mapeo de meses en español para traducir el texto del Excel a número
+                # Mapeo de meses en inglés/español estándar para traducir el texto del Excel a número
                 meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                          "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
@@ -196,14 +166,13 @@ else:
                     # --- CÁLCULO AUTOMÁTICO DEL LÍMITE (1 DÍA ANTES) ---
                     if 'fecha' in p and pd.notna(p['fecha']):
                         try:
-                            # Limpiamos el texto (ej: "11-Jun")
                             txt_fecha = str(p['fecha']).strip().lower()
                             partes = txt_fecha.split('-')
                             
                             if len(partes) == 2:
                                 dia_partido = int(partes[0])
                                 mes_texto = partes[1][:3] # Tomamos las 3 primeras letras del mes
-                                mes_partido = meses.get(mes_partido, 6) # Por defecto Junio si falla
+                                mes_partido = meses.get(mes_texto, 6) # CORREGIDO: Uso correcto de mes_texto (Por defecto Junio)
                                 
                                 # Creamos la fecha del partido real en el año 2026
                                 fecha_partido_real = datetime.date(2026, mes_partido, dia_partido)
