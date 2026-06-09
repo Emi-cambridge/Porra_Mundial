@@ -2,26 +2,11 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import datetime
-import random # <- Nueva librería para elegir mensajes al azar
 
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
 
-# --- LISTA DE CHISTES Y MENSAJES DE ÁNIMO ---
-FRASES_DIVERTIDAS = [
-    "⚽ ¡Que el espíritu de Maradona sintonice tus pronósticos hoy!",
-    "🏃‍♂️ ¡A entrenar esos dedos, que la clasificación se está moviendo más que un extremo por la banda!",
-    "👀 Dicen las malas lenguas que el último de la porra paga los cafés en la próxima reunión familiar...",
-    "🥇 ¿Quién necesita analistas de la televisión teniendo a estos expertos en casa?",
-    "🔮 Deja de mirar la bola de cristal y hazle caso a tu instinto futbolero.",
-    "🚫 ¡Prohibido copiarle las apuestas al líder! Sé original.",
-    "🧐 Analizando minuciosamente los datos... me dice el sistema que hoy alguien va a hacer un pleno.",
-    "💪 ¡Ánimo! Hasta los equipos más pequeños remontan en el minuto 90. ¡Tú puedes subir puestos!",
-    "🦉 Un sabio del fútbol dijo una vez: 'El partido no se acaba hasta que el árbitro pita'. ¡A por ellos!",
-    "🎯 Un pleno de 3 puntos no lo consigue cualquiera, ¡afina esa puntería!"
-]
-
-# --- ESTILOS CSS PARA HACER LA BARRA LATERAL Y BOTONES MÁS VISIBLES ---
+# --- ESTILOS CSS PARA HACER LA BARRA LATERAL OPTIMIZADA Y BOTONES ---
 st.markdown("""
     <style>
         button[data-testid="stSidebarCollapseButton"] {
@@ -42,6 +27,13 @@ st.markdown("""
             color: #1a1a1a !important;
             padding: 4px 0px !important;
         }
+        
+        /* OPTIMIZACIÓN MÓVIL: Reducir el ancho del menú lateral cuando se despliega en teléfonos */
+        @media (max-width: 768px) {
+            section[data-testid="stSidebar"] {
+                max-width: 65vw !important;
+            }
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -61,12 +53,17 @@ def calcular_clasificacion():
     
     if df_usuarios.empty or df_partidos.empty:
         return pd.DataFrame()
+    
+    # Normalizar columnas a minúsculas
+    df_partidos.columns = df_partidos.columns.str.strip().str.lower()
+    df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
         
     usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
     partidos_jugados = df_partidos[df_partidos['jugado'] == 1]
     
     apuestas_map = {}
     if not df_apuestas.empty:
+        df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
         for _, row in df_apuestas.iterrows():
             try:
                 apuestas_map[(int(row['usuario_id']), int(row['partido_id']))] = (int(row['goles1']), int(row['goles2']))
@@ -119,7 +116,7 @@ def calcular_clasificacion():
             if idx == 0:
                 nombre = "🥇 " + nombre
             elif idx == 1:
-                nombre = "🥈 " + height
+                nombre = "🥈 " + nombre
             elif idx == 2:
                 nombre = "🥉 " + nombre
                 
@@ -137,12 +134,16 @@ def generar_datos_evolucion():
     
     if df_usuarios.empty or df_partidos.empty:
         return pd.DataFrame()
+    
+    df_partidos.columns = df_partidos.columns.str.strip().str.lower()
+    df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
         
     usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
     partidos_jugados = df_partidos[df_partidos['jugado'] == 1].sort_values(by='id')
     
     apuestas_map = {}
     if not df_apuestas.empty:
+        df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
         for _, row in df_apuestas.iterrows():
             try:
                 apuestas_map[(int(row['usuario_id']), int(row['partido_id']))] = (int(row['goles1']), int(row['goles2']))
@@ -220,19 +221,10 @@ else:
         opciones_menu.append("⚙️ Panel Administrador")
         
     menu = st.sidebar.radio("Ir a:", opciones_menu)
-    
-    if st.sidebar.button("Cerrar Sesión"):
-        st.session_state.logged_in = False
-        st.rerun()
 
     # --- PANTALLA: CLASIFICACIÓN ---
     if menu == "🏆 Clasificación":
         st.title("🏆 Clasificación de la Familia")
-        
-        # --- NUEVO: CONTENEDOR DE MENSAJE ALEATORIO DEL DÍA ---
-        frase_del_dia = random.choice(FRASES_DIVERTIDAS)
-        st.info(frase_del_dia)
-        
         st.write("Aquí puedes ver quién va liderando la porra mundialista en tiempo real.")
         
         tabla_puntos = calcular_clasificacion()
@@ -261,6 +253,7 @@ else:
         if df_partidos.empty:
             st.warning("No se ha podido cargar el calendario de partidos.")
         else:
+            df_partidos.columns = df_partidos.columns.str.strip().str.lower()
             partidos_activos = df_partidos[df_partidos['jugado'] == 0]
             
             apuestas_usuario = {}
@@ -315,7 +308,9 @@ else:
                             bloqueado_por_fecha = False
 
                     with st.container(border=True):
-                        st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
+                        # --- REFLEJAR GRUPO SI EXISTE ---
+                        info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
+                        st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
                         st.caption(f"📅 Fecha del encuentro: {p['fecha']}")
                         
                         def_g1, def_g2 = 0, 0
@@ -370,6 +365,7 @@ else:
             if df_partidos.empty:
                 st.info("No hay partidos en el calendario.")
             else:
+                df_partidos.columns = df_partidos.columns.str.strip().str.lower()
                 filtro_admin = st.selectbox(
                     "🔍 Filtrar partidos del panel:",
                     ["Solo partidos PENDIENTES de cerrar", "Solo partidos FINALIZADOS", "Mostrar todos los partidos"]
@@ -385,7 +381,8 @@ else:
                         continue
                     
                     with st.container(border=True):
-                        st.write(f"**{p['equipo1']} vs {p['equipo2']}**")
+                        info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
+                        st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
                         
                         def_res1 = int(p['goles1']) if es_jugado and pd.notna(p['goles1']) and str(p['goles1']).strip() != "" else 0
                         def_res2 = int(p['goles2']) if es_jugado and pd.notna(p['goles2']) and str(p['goles2']).strip() != "" else 0
@@ -406,6 +403,7 @@ else:
                             texto_boton = "Modificar Resultado" if es_jugado else "Finalizar Partido"
                             if st.button(texto_boton, key=f"fin_{p_id}", use_container_width=True):
                                 df_partidos_completo = leer_tabla("partidos")
+                                df_partidos_completo.columns = df_partidos_completo.columns.str.strip().str.lower()
                                 df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [int(res1), int(res2), 1]
                                 conn.update(worksheet="partidos", data=df_partidos_completo)
                                 st.cache_data.clear()
@@ -418,12 +416,14 @@ else:
                 eq1 = st.text_input("Equipo Local")
                 eq2 = st.text_input("Equipo Visitante")
                 fecha_partido = st.text_input("Fecha (Ej: 15-Jun)")
+                grupo_partido = st.text_input("Grupo (Ej: Grupo A)") # <- Nuevo campo de entrada
                 check_partido = st.form_submit_button("Crear Partido")
                 
                 if check_partido and eq1 and eq2:
                     df_partidos_completo = leer_tabla("partidos")
+                    df_partidos_completo.columns = df_partidos_completo.columns.str.strip().str.lower()
                     nuevo_id = int(df_partidos_completo['id'].max() + 1) if not df_partidos_completo.empty else 1
-                    nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "goles1": "", "goles2": "", "jugado": 0}])
+                    nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "grupo": grupo_partido, "goles1": "", "goles2": "", "jugado": 0}])
                     df_partidos_completo = pd.concat([df_partidos_completo, nueva_fila], ignore_index=True)
                     conn.update(worksheet="partidos", data=df_partidos_completo)
                     st.cache_data.clear()
