@@ -28,7 +28,7 @@ st.markdown("""
             padding: 4px 0px !important;
         }
         
-        /* OPTIMIZACIÓN MÓVIL: Reducir el ancho del menú lateral cuando se despliega en teléfonos */
+        /* OPTIMIZACIÓN MÓVIL */
         @media (max-width: 768px) {
             section[data-testid="stSidebar"] {
                 max-width: 65vw !important;
@@ -44,9 +44,8 @@ def leer_tabla(pestana):
     """Lee datos aprovechando la caché durante 10 mins (600s) para evitar el bloqueo de API de Google."""
     return conn.read(worksheet=pestana, ttl=600)
 
-# --- LÓGICA DE PUNTOS Y CLASIFICACIÓN (CON MEDALLAS Y ESTRELLAS) ---
+# --- LÓGICA DE PUNTOS Y CLASIFICACIÓN (CON MEDALLAS, ESTRELLAS E ICONOS INFERIORES) ---
 def calcular_clasificacion():
-    """Calcula el ranking dinámico leyendo de la caché y añade iconos visuales."""
     df_usuarios = leer_tabla("usuarios")
     df_partidos = leer_tabla("partidos")
     df_apuestas = leer_tabla("apuestas")
@@ -54,7 +53,6 @@ def calcular_clasificacion():
     if df_usuarios.empty or df_partidos.empty:
         return pd.DataFrame()
     
-    # Normalizar columnas a minúsculas
     df_partidos.columns = df_partidos.columns.str.strip().str.lower()
     df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
         
@@ -106,13 +104,25 @@ def calcular_clasificacion():
         df = df.sort_values(by=["Puntos Totales", "Plenos (3 pts)"], ascending=[False, False]).reset_index(drop=True)
         
         max_plenos = df["Plenos (3 pts)"].max()
+        total_jugadores = len(df)
         
         for idx in df.index:
             nombre = df.at[idx, "Familiar"]
             
+            # Estrellas por más plenos
             if df.at[idx, "Plenos (3 pts)"] == max_plenos and max_plenos > 0:
                 nombre += " ⭐"
                 
+            # Asignación de iconos a los 3 últimos con menos puntos
+            if total_jugadores >= 3:
+                if idx == total_jugadores - 1:
+                    nombre += " 😵"
+                elif idx == total_jugadores - 2:
+                    nombre += " 😭"
+                elif idx == total_jugadores - 3:
+                    nombre += " 😓"
+                
+            # Asignación de medallas a los 3 primeros
             if idx == 0:
                 nombre = "🥇 " + nombre
             elif idx == 1:
@@ -127,7 +137,6 @@ def calcular_clasificacion():
 
 # --- LÓGICA DE EVOLUCIÓN PARA EL GRÁFICO ---
 def generar_datos_evolucion():
-    """Genera un historial de puntos partido a partido para alimentar el gráfico de líneas."""
     df_usuarios = leer_tabla("usuarios")
     df_partidos = leer_tabla("partidos")
     df_apuestas = leer_tabla("apuestas")
@@ -245,7 +254,7 @@ else:
     # --- PANTALLA: MIS APUESTAS ---
     elif menu == "📝 Mis Apuestas":
         st.title("📝 Tus Pronósticos")
-        st.write("Introduce tus resultados y haz clic en **Guardar Apuesta**. El plazo cierra definitivamente el día antes de cada partido.")
+        st.write("El plazo para guardar apuestas se cierra automáticamente **2 horas antes** del inicio de cada partido.")
         
         df_partidos = leer_tabla("partidos")
         df_apuestas = leer_tabla("apuestas")
@@ -269,7 +278,10 @@ else:
             if partidos_activos.empty:
                 st.info("No hay partidos abiertos para apostar en este momento.")
             else:
-                hoy = datetime.date.today()
+                # Calcular la hora actual en BST (UTC + 1 hora de verano)
+                ahora_utc = datetime.datetime.utcnow()
+                ahora_bst = ahora_utc + datetime.timedelta(hours=1)
+                
                 meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                          "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
                 
@@ -289,29 +301,39 @@ else:
                         
                     bloqueado_por_fecha = False
                     
-                    if 'fecha' in p and pd.notna(p['fecha']):
+                    # Verificación de Fecha y Hora con bloqueo de 2 horas
+                    if 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
                         try:
                             txt_fecha = str(p['fecha']).strip().lower()
-                            partes = txt_fecha.split('-')
+                            txt_hora = str(p['hora']).strip()
                             
-                            if len(partes) == 2:
-                                dia_partido = int(partes[0])
-                                mes_texto = partes[1][:3]
+                            partes_f = txt_fecha.split('-')
+                            partes_h = txt_hora.split(':')
+                            
+                            if len(partes_f) == 2 and len(partes_h) >= 2:
+                                dia_partido = int(partes_f[0])
+                                mes_texto = partes_f[1][:3]
                                 mes_partido = meses.get(mes_texto, 6)
                                 
-                                fecha_partido_real = datetime.date(2026, mes_partido, dia_partido)
-                                limite_apuesta = fecha_partido_real - datetime.timedelta(days=1)
+                                hora_p = int(partes_h[0])
+                                min_p = int(partes_h[1][:2])
                                 
-                                if hoy > limite_apuesta:
+                                # Crear objeto datetime con el inicio del partido
+                                fecha_partido_real = datetime.datetime(2026, mes_partido, dia_partido, hora_p, min_p)
+                                # Límite: 2 horas antes
+                                limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
+                                
+                                if ahora_bst > limite_apuesta:
                                     bloqueado_por_fecha = True
                         except:
                             bloqueado_por_fecha = False
 
                     with st.container(border=True):
-                        # --- REFLEJAR GRUPO SI EXISTE ---
                         info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
+                        hora_str = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
+                        
                         st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
-                        st.caption(f"📅 Fecha del encuentro: {p['fecha']}")
+                        st.caption(f"📅 {p['fecha']} a las {hora_str} (BST)")
                         
                         def_g1, def_g2 = 0, 0
                         if tiene_apuesta:
@@ -320,7 +342,7 @@ else:
                                 st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
                         
                         if bloqueado_por_fecha:
-                            st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. El tiempo límite expiró el día anterior al partido.</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. Se superó el límite de las 2 horas antes del partido.</span>", unsafe_allow_html=True)
                             if tiene_apuesta:
                                 st.info(f"Tu pronóstico final guardado fue: **{def_g1} - {def_g2}**")
                         
@@ -416,14 +438,15 @@ else:
                 eq1 = st.text_input("Equipo Local")
                 eq2 = st.text_input("Equipo Visitante")
                 fecha_partido = st.text_input("Fecha (Ej: 15-Jun)")
-                grupo_partido = st.text_input("Grupo (Ej: Grupo A)") # <- Nuevo campo de entrada
+                hora_partido = st.text_input("Hora (Ej: 20:00)")
+                grupo_partido = st.text_input("Grupo (Ej: Grupo A)") 
                 check_partido = st.form_submit_button("Crear Partido")
                 
                 if check_partido and eq1 and eq2:
                     df_partidos_completo = leer_tabla("partidos")
                     df_partidos_completo.columns = df_partidos_completo.columns.str.strip().str.lower()
                     nuevo_id = int(df_partidos_completo['id'].max() + 1) if not df_partidos_completo.empty else 1
-                    nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "grupo": grupo_partido, "goles1": "", "goles2": "", "jugado": 0}])
+                    nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "hora": hora_partido, "grupo": grupo_partido, "goles1": "", "goles2": "", "jugado": 0}])
                     df_partidos_completo = pd.concat([df_partidos_completo, nueva_fila], ignore_index=True)
                     conn.update(worksheet="partidos", data=df_partidos_completo)
                     st.cache_data.clear()
