@@ -301,7 +301,6 @@ else:
                         
                     bloqueado_por_fecha = False
                     
-                    # Verificación de Fecha y Hora con bloqueo de 2 horas
                     if 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
                         try:
                             txt_fecha = str(p['fecha']).strip().lower()
@@ -318,9 +317,7 @@ else:
                                 hora_p = int(partes_h[0])
                                 min_p = int(partes_h[1][:2])
                                 
-                                # Crear objeto datetime con el inicio del partido
                                 fecha_partido_real = datetime.datetime(2026, mes_partido, dia_partido, hora_p, min_p)
-                                # Límite: 2 horas antes
                                 limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
                                 
                                 if ahora_bst > limite_apuesta:
@@ -356,6 +353,7 @@ else:
                             st.write("")
                             if not bloqueado_por_fecha:
                                 if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
+                                    # 1. Guardar en la tabla principal de apuestas
                                     df_apuestas_completo = leer_tabla("apuestas")
                                     df_apuestas_completo.columns = df_apuestas_completo.columns.str.strip().str.lower()
                                     
@@ -371,6 +369,26 @@ else:
                                         df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
                                     
                                     conn.update(worksheet="apuestas", data=df_apuestas_completo)
+                                    
+                                    # 2. Registrar el movimiento en el LOG
+                                    try:
+                                        df_log = leer_tabla("log_apuestas")
+                                        fecha_reg = ahora_bst.strftime("%d-%m-%Y %H:%M:%S")
+                                        partido_str = f"{p['equipo1']} vs {p['equipo2']}"
+                                        
+                                        nueva_fila_log = pd.DataFrame([{
+                                            "fecha_registro": fecha_reg,
+                                            "usuario": st.session_state.nombre,
+                                            "partido": partido_str,
+                                            "goles1": int(g1),
+                                            "goles2": int(g2)
+                                        }])
+                                        
+                                        df_log = pd.concat([df_log, nueva_fila_log], ignore_index=True)
+                                        conn.update(worksheet="log_apuestas", data=df_log)
+                                    except Exception as e:
+                                        pass # Si la hoja log_apuestas no existe aún, ignora el error para no bloquear la web
+                                    
                                     st.cache_data.clear()
                                     st.success("¡Apuesta guardada con éxito!")
                                     st.rerun()
@@ -378,7 +396,7 @@ else:
     # --- PANTALLA: PANEL ADMINISTRADOR ---
     elif menu == "⚙️ Panel Administrador":
         st.title("⚙️ Panel de Control (Admin)")
-        tab1, tab2 = st.tabs(["Cerrar Partidos con Resultados Reales", "Añadir Nuevos Partidos"])
+        tab1, tab2, tab3 = st.tabs(["Cerrar Partidos", "Añadir Nuevos Partidos", "Ver Log de Apuestas"])
         
         with tab1:
             st.subheader("Resultados de los Encuentros")
@@ -452,3 +470,15 @@ else:
                     st.cache_data.clear()
                     st.success("Partido añadido con éxito.")
                     st.rerun()
+                    
+        with tab3:
+            st.subheader("Historial de Movimientos (Log)")
+            try:
+                df_log_view = leer_tabla("log_apuestas")
+                if not df_log_view.empty:
+                    # Mostrar el log ordenado, poniendo los más recientes arriba
+                    st.dataframe(df_log_view.sort_index(ascending=False), use_container_width=True)
+                else:
+                    st.info("El log está vacío. Aparecerán datos cuando alguien guarde una apuesta.")
+            except Exception:
+                st.warning("No se ha encontrado la pestaña 'log_apuestas' en Google Sheets o está mal configurada.")
