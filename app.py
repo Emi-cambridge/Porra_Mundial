@@ -2,9 +2,24 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import datetime
+import random # <- Nueva librería para elegir mensajes al azar
 
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
+
+# --- LISTA DE CHISTES Y MENSAJES DE ÁNIMO ---
+FRASES_DIVERTIDAS = [
+    "⚽ ¡Que el espíritu de Maradona sintonice tus pronósticos hoy!",
+    "🏃‍♂️ ¡A entrenar esos dedos, que la clasificación se está moviendo más que un extremo por la banda!",
+    "👀 Dicen las malas lenguas que el último de la porra paga los cafés en la próxima reunión familiar...",
+    "🥇 ¿Quién necesita analistas de la televisión teniendo a estos expertos en casa?",
+    "🔮 Deja de mirar la bola de cristal y hazle caso a tu instinto futbolero.",
+    "🚫 ¡Prohibido copiarle las apuestas al líder! Sé original.",
+    "🧐 Analizando minuciosamente los datos... me dice el sistema que hoy alguien va a hacer un pleno.",
+    "💪 ¡Ánimo! Hasta los equipos más pequeños remontan en el minuto 90. ¡Tú puedes subir puestos!",
+    "🦉 Un sabio del fútbol dijo una vez: 'El partido no se acaba hasta que el árbitro pita'. ¡A por ellos!",
+    "🎯 Un pleno de 3 puntos no lo consigue cualquiera, ¡afina esa puntería!"
+]
 
 # --- ESTILOS CSS PARA HACER LA BARRA LATERAL Y BOTONES MÁS VISIBLES ---
 st.markdown("""
@@ -104,7 +119,7 @@ def calcular_clasificacion():
             if idx == 0:
                 nombre = "🥇 " + nombre
             elif idx == 1:
-                nombre = "🥈 " + nombre
+                nombre = "🥈 " + height
             elif idx == 2:
                 nombre = "🥉 " + nombre
                 
@@ -213,6 +228,11 @@ else:
     # --- PANTALLA: CLASIFICACIÓN ---
     if menu == "🏆 Clasificación":
         st.title("🏆 Clasificación de la Familia")
+        
+        # --- NUEVO: CONTENEDOR DE MENSAJE ALEATORIO DEL DÍA ---
+        frase_del_dia = random.choice(FRASES_DIVERTIDAS)
+        st.info(frase_del_dia)
+        
         st.write("Aquí puedes ver quién va liderando la porra mundialista en tiempo real.")
         
         tabla_puntos = calcular_clasificacion()
@@ -334,7 +354,7 @@ else:
                                         df_apuestas_completo = pd.concat([df_apuestas_completo, nueva_fila], ignore_index=True)
                                     
                                     conn.update(worksheet="apuestas", data=df_apuestas_completo)
-                                    st.cache_data.clear() # <- Limpia la caché al instante
+                                    st.cache_data.clear()
                                     st.success("¡Apuesta guardada con éxito!")
                                     st.rerun()
 
@@ -388,7 +408,7 @@ else:
                                 df_partidos_completo = leer_tabla("partidos")
                                 df_partidos_completo.loc[df_partidos_completo['id'] == p_id, ['goles1', 'goles2', 'jugado']] = [int(res1), int(res2), 1]
                                 conn.update(worksheet="partidos", data=df_partidos_completo)
-                                st.cache_data.clear() # <- Limpia la caché al instante
+                                st.cache_data.clear()
                                 st.success("¡Datos guardados y puntos actualizados!")
                                 st.rerun()
                                 
@@ -406,6 +426,6 @@ else:
                     nueva_fila = pd.DataFrame([{"id": nuevo_id, "equipo1": eq1, "equipo2": eq2, "fecha": fecha_partido, "goles1": "", "goles2": "", "jugado": 0}])
                     df_partidos_completo = pd.concat([df_partidos_completo, nueva_fila], ignore_index=True)
                     conn.update(worksheet="partidos", data=df_partidos_completo)
-                    st.cache_data.clear() # <- Limpia la caché al instante
+                    st.cache_data.clear()
                     st.success("Partido añadido con éxito.")
                     st.rerun()
