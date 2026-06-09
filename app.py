@@ -44,7 +44,7 @@ def leer_tabla(pestana):
     """Lee datos aprovechando la caché durante 10 mins (600s) para evitar el bloqueo de API de Google."""
     return conn.read(worksheet=pestana, ttl=600)
 
-# --- LÓGICA DE PUNTOS Y CLASIFICACIÓN (CON MEDALLAS, ESTRELLAS E ICONOS INFERIORES) ---
+# --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
 def calcular_clasificacion():
     df_usuarios = leer_tabla("usuarios")
     df_partidos = leer_tabla("partidos")
@@ -109,11 +109,9 @@ def calcular_clasificacion():
         for idx in df.index:
             nombre = df.at[idx, "Familiar"]
             
-            # Estrellas por más plenos
             if df.at[idx, "Plenos (3 pts)"] == max_plenos and max_plenos > 0:
                 nombre += " ⭐"
                 
-            # Asignación de iconos a los 3 últimos con menos puntos
             if total_jugadores >= 3:
                 if idx == total_jugadores - 1:
                     nombre += " 😵"
@@ -122,7 +120,6 @@ def calcular_clasificacion():
                 elif idx == total_jugadores - 3:
                     nombre += " 😓"
                 
-            # Asignación de medallas a los 3 primeros
             if idx == 0:
                 nombre = "🥇 " + nombre
             elif idx == 1:
@@ -263,7 +260,6 @@ else:
             st.warning("No se ha podido cargar el calendario de partidos.")
         else:
             df_partidos.columns = df_partidos.columns.str.strip().str.lower()
-            partidos_activos = df_partidos[df_partidos['jugado'] == 0]
             
             apuestas_usuario = {}
             if not df_apuestas.empty:
@@ -275,73 +271,88 @@ else:
                     except:
                         continue
             
-            if partidos_activos.empty:
-                st.info("No hay partidos abiertos para apostar en este momento.")
-            else:
-                # Calcular la hora actual en BST (UTC + 1 hora de verano)
-                ahora_utc = datetime.datetime.utcnow()
-                ahora_bst = ahora_utc + datetime.timedelta(hours=1)
+            ahora_utc = datetime.datetime.utcnow()
+            ahora_bst = ahora_utc + datetime.timedelta(hours=1)
+            
+            meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
+                     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
+            
+            filtro = st.selectbox(
+                "🔍 Filtrar partidos por estado:",
+                ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS", "Solo partidos FINALIZADOS"]
+            )
+            
+            for _, p in df_partidos.iterrows():
+                p_id = int(p['id'])
+                es_jugado = int(p['jugado']) == 1
+                tiene_apuesta = p_id in apuestas_usuario
                 
-                meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
-                         "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
-                
-                filtro = st.selectbox(
-                    "🔍 Filtrar partidos por estado:",
-                    ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS"]
-                )
-                
-                for _, p in partidos_activos.iterrows():
-                    p_id = int(p['id'])
-                    tiene_apuesta = p_id in apuestas_usuario
+                # --- NUEVA LÓGICA DE FILTRADO PARA USUARIOS ---
+                if filtro == "Solo partidos PENDIENTES" and (tiene_apuesta or es_jugado):
+                    continue
+                if filtro == "Solo partidos GUARDADOS" and not tiene_apuesta:
+                    continue
+                if filtro == "Solo partidos FINALIZADOS" and not es_jugado:
+                    continue
                     
-                    if filtro == "Solo partidos PENDIENTES" and tiene_apuesta:
-                        continue
-                    if filtro == "Solo partidos GUARDADOS" and not tiene_apuesta:
-                        continue
+                bloqueado_por_fecha = False
+                
+                if not es_jugado and 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
+                    try:
+                        txt_fecha = str(p['fecha']).strip().lower()
+                        txt_hora = str(p['hora']).strip()
                         
-                    bloqueado_por_fecha = False
-                    
-                    if 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
-                        try:
-                            txt_fecha = str(p['fecha']).strip().lower()
-                            txt_hora = str(p['hora']).strip()
+                        partes_f = txt_fecha.split('-')
+                        partes_h = txt_hora.split(':')
+                        
+                        if len(partes_f) == 2 and len(partes_h) >= 2:
+                            dia_partido = int(partes_f[0])
+                            mes_texto = partes_f[1][:3]
+                            mes_partido = meses.get(mes_texto, 6)
                             
-                            partes_f = txt_fecha.split('-')
-                            partes_h = txt_hora.split(':')
+                            hora_p = int(partes_h[0])
+                            min_p = int(partes_h[1][:2])
                             
-                            if len(partes_f) == 2 and len(partes_h) >= 2:
-                                dia_partido = int(partes_f[0])
-                                mes_texto = partes_f[1][:3]
-                                mes_partido = meses.get(mes_texto, 6)
-                                
-                                hora_p = int(partes_h[0])
-                                min_p = int(partes_h[1][:2])
-                                
-                                fecha_partido_real = datetime.datetime(2026, mes_partido, dia_partido, hora_p, min_p)
-                                limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
-                                
-                                if ahora_bst > limite_apuesta:
-                                    bloqueado_por_fecha = True
-                        except:
-                            bloqueado_por_fecha = False
+                            fecha_partido_real = datetime.datetime(2026, mes_partido, dia_partido, hora_p, min_p)
+                            limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
+                            
+                            if ahora_bst > limite_apuesta:
+                                bloqueado_por_fecha = True
+                    except:
+                        bloqueado_por_fecha = False
 
-                    with st.container(border=True):
-                        info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
-                        hora_str = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
+                with st.container(border=True):
+                    info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
+                    hora_str = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
+                    
+                    st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
+                    st.caption(f"📅 {p['fecha']} a las {hora_str} (BST)")
+                    
+                    def_g1, def_g2 = 0, 0
+                    if tiene_apuesta:
+                        def_g1, def_g2 = apuestas_usuario[p_id]
                         
-                        st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
-                        st.caption(f"📅 {p['fecha']} a las {hora_str} (BST)")
-                        
-                        def_g1, def_g2 = 0, 0
+                    # --- DISEÑO PARA PARTIDOS YA FINALIZADOS ---
+                    if es_jugado:
+                        res_real1 = int(p['goles1']) if pd.notna(p['goles1']) and str(p['goles1']).strip() != "" else 0
+                        res_real2 = int(p['goles2']) if pd.notna(p['goles2']) and str(p['goles2']).strip() != "" else 0
+                        st.markdown(f"<span style='color: #8e44ad; font-weight: bold;'>🏆 Partido finalizado. Resultado real: {res_real1} - {res_real2}</span>", unsafe_allow_html=True)
                         if tiene_apuesta:
-                            def_g1, def_g2 = apuestas_usuario[p_id]
-                            if not bloqueado_por_fecha:
-                                st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
+                            st.info(f"Tu pronóstico fue: **{def_g1} - {def_g2}**")
+                        else:
+                            st.warning("No guardaste ningún pronóstico para este partido.")
+                    
+                    # --- DISEÑO PARA PARTIDOS AÚN PENDIENTES ---
+                    else:
+                        if tiene_apuesta and not bloqueado_por_fecha:
+                            st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
                         
                         if bloqueado_por_fecha:
                             st.markdown(f"<span style='color: #e74c3c; font-weight: bold;'>🔒 Plazo cerrado. Se superó el límite de las 2 horas antes del partido.</span>", unsafe_allow_html=True)
                             if tiene_apuesta:
                                 st.info(f"Tu pronóstico final guardado fue: **{def_g1} - {def_g2}**")
+                            else:
+                                st.warning("No guardaste ningún pronóstico para este partido.")
                         
                         col1, col2, col3 = st.columns([2, 2, 3])
                         with col1:
@@ -353,7 +364,6 @@ else:
                             st.write("")
                             if not bloqueado_por_fecha:
                                 if st.button("Guardar Apuesta", key=f"btn_{p_id}", use_container_width=True):
-                                    # 1. Guardar en la tabla principal de apuestas
                                     df_apuestas_completo = leer_tabla("apuestas")
                                     df_apuestas_completo.columns = df_apuestas_completo.columns.str.strip().str.lower()
                                     
@@ -370,7 +380,6 @@ else:
                                     
                                     conn.update(worksheet="apuestas", data=df_apuestas_completo)
                                     
-                                    # 2. Registrar el movimiento en el LOG
                                     try:
                                         df_log = leer_tabla("log_apuestas")
                                         fecha_reg = ahora_bst.strftime("%d-%m-%Y %H:%M:%S")
@@ -387,7 +396,7 @@ else:
                                         df_log = pd.concat([df_log, nueva_fila_log], ignore_index=True)
                                         conn.update(worksheet="log_apuestas", data=df_log)
                                     except Exception as e:
-                                        pass # Si la hoja log_apuestas no existe aún, ignora el error para no bloquear la web
+                                        pass
                                     
                                     st.cache_data.clear()
                                     st.success("¡Apuesta guardada con éxito!")
@@ -476,7 +485,6 @@ else:
             try:
                 df_log_view = leer_tabla("log_apuestas")
                 if not df_log_view.empty:
-                    # Mostrar el log ordenado, poniendo los más recientes arriba
                     st.dataframe(df_log_view.sort_index(ascending=False), use_container_width=True)
                 else:
                     st.info("El log está vacío. Aparecerán datos cuando alguien guarde una apuesta.")
