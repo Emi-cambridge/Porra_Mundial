@@ -233,7 +233,7 @@ else:
 
     # --- PANTALLA: CLASIFICACIÓN ---
     if menu == "🏆 Clasificación":
-        st.title("🏆 Clasificación de la Familia")
+        st.title("🏆 Clasificación")
         st.write("Aquí puedes ver quién va liderando la porra mundialista en tiempo real.")
         
         tabla_puntos = calcular_clasificacion()
