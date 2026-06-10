@@ -2,9 +2,28 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import datetime
+import time
 
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
+
+# --- DICCIONARIO DE BANDERAS AUTOMÁTICAS ---
+BANDERAS = {
+    "españa": "🇪🇸", "alemania": "🇩🇪", "francia": "🇫🇷", "inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "italia": "🇮🇹", "portugal": "🇵🇹", "países bajos": "🇳🇱", "holanda": "🇳🇱",
+    "bélgica": "🇧🇪", "croacia": "🇭🇷", "argentina": "🇦🇷", "brasil": "🇧🇷",
+    "uruguay": "🇺🇾", "colombia": "🇨🇴", "chile": "🇨🇱", "perú": "🇵🇪",
+    "méxico": "🇲🇽", "estados unidos": "🇺🇸", "usa": "🇺🇸", "canadá": "🇨🇦",
+    "marruecos": "🇲🇦", "senegal": "🇸🇳", "japón": "🇯🇵", "corea del sur": "🇰🇷",
+    "australia": "🇦🇺", "arabia saudita": "🇸🇦", "ecuador": "🇪🇨", "suiza": "🇨🇭",
+    "dinamarca": "🇩🇰", "túnez": "🇹🇳", "polonia": "🇵🇱", "costa rica": "🇨🇷",
+    "gales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "irán": "🇮🇷", "ghana": "🇬🇭", "camerún": "🇨🇲", "serbia": "🇷🇸"
+}
+
+def obtener_bandera(equipo):
+    """Devuelve el emoji de la bandera correspondiente o una bandera blanca si no se encuentra."""
+    nombre_limpio = str(equipo).strip().lower()
+    return BANDERAS.get(nombre_limpio, "🏳️")
 
 # --- ESTILOS CSS PARA HACER LA BARRA LATERAL OPTIMIZADA Y BOTONES ---
 st.markdown("""
@@ -190,6 +209,8 @@ def generar_datos_evolucion():
 # --- CONTROL DE SESIÓN (LOGIN) ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
+if 'animado_premio' not in st.session_state:
+    st.session_state.animado_premio = False
 
 if not st.session_state.logged_in:
     st.title("⚽ Porra Mundialista 2026")
@@ -230,7 +251,35 @@ else:
 
     # --- PANTALLA: CLASIFICACIÓN ---
     if menu == "🏆 Clasificación":
-        st.title("🏆 Clasificación")
+        st.title("🏆 Clasificación de la Familia")
+        
+        # --- NUEVO MARCADOR ANIMADO DEL PREMIO ---
+        contenedor_premio = st.empty()
+        
+        if not st.session_state.animado_premio:
+            pasos = 25
+            for i in range(1, pasos + 1):
+                valor_actual = int((1500000 / pasos) * i)
+                texto_dinamico = f"{valor_actual:,}".replace(",", ".")
+                contenedor_premio.markdown(f"""
+                    <div style="background-color: #fef9e7; padding: 20px; border-radius: 12px; border: 2px dashed #f1c40f; text-align: center; margin-bottom: 20px;">
+                        <span style="font-size: 2rem; font-weight: 800; color: #b7950b; text-shadow: 1px 1px 2px #f9e79f;">
+                            💰 ACUMULADO PREMIO: {texto_dinamico} Millones
+                        </span>
+                    </div>
+                """, unsafe_allow_html=True)
+                time.sleep(0.08)
+            st.session_state.animado_premio = True
+            
+        # Cuadro fijo definitivo
+        contenedor_premio.markdown("""
+            <div style="background-color: #fef9e7; padding: 20px; border-radius: 12px; border: 3px solid #f1c40f; text-align: center; margin-bottom: 20px; box-shadow: 0px 4px 10px rgba(241, 196, 15, 0.2);">
+                <span style="font-size: 2.1rem; font-weight: 900; color: #b7950b; text-shadow: 1px 1px 2px #f9e79f;">
+                    💰 PREMIO TOTAL: 1.500.000 Millones 💰
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+        
         st.write("Aquí puedes ver quién va liderando la porra mundialista en tiempo real.")
         
         tabla_puntos = calcular_clasificacion()
@@ -287,7 +336,6 @@ else:
                 es_jugado = int(p['jugado']) == 1
                 tiene_apuesta = p_id in apuestas_usuario
                 
-                # --- NUEVA LÓGICA DE FILTRADO PARA USUARIOS ---
                 if filtro == "Solo partidos PENDIENTES" and (tiene_apuesta or es_jugado):
                     continue
                 if filtro == "Solo partidos GUARDADOS" and not tiene_apuesta:
@@ -325,14 +373,17 @@ else:
                     info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
                     hora_str = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
                     
-                    st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
+                    # OBTENER BANDERAS AUTOMÁTICAS
+                    bandera1 = obtener_bandera(p['equipo1'])
+                    bandera2 = obtener_bandera(p['equipo2'])
+                    
+                    st.write(f"### {bandera1} {p['equipo1']} vs {p['equipo2']} {bandera2} {info_grupo}")
                     st.caption(f"📅 {p['fecha']} a las {hora_str} (BST)")
                     
                     def_g1, def_g2 = 0, 0
                     if tiene_apuesta:
                         def_g1, def_g2 = apuestas_usuario[p_id]
                         
-                    # --- DISEÑO PARA PARTIDOS YA FINALIZADOS ---
                     if es_jugado:
                         res_real1 = int(p['goles1']) if pd.notna(p['goles1']) and str(p['goles1']).strip() != "" else 0
                         res_real2 = int(p['goles2']) if pd.notna(p['goles2']) and str(p['goles2']).strip() != "" else 0
@@ -342,7 +393,6 @@ else:
                         else:
                             st.warning("No guardaste ningún pronóstico para este partido.")
                     
-                    # --- DISEÑO PARA PARTIDOS AÚN PENDIENTES ---
                     else:
                         if tiene_apuesta and not bloqueado_por_fecha:
                             st.markdown("<span style='color: #2ecc71; font-weight: bold;'>✓ Tienes una apuesta guardada. Puedes cambiarla hasta el cierre.</span>", unsafe_allow_html=True)
@@ -356,9 +406,9 @@ else:
                         
                         col1, col2, col3 = st.columns([2, 2, 3])
                         with col1:
-                            g1 = st.number_input(f"Goles {p['equipo1']}", min_value=0, max_value=20, value=def_g1, key=f"g1_{p_id}", disabled=bloqueado_por_fecha)
+                            g1 = st.number_input(f"Goles {bandera1} {p['equipo1']}", min_value=0, max_value=20, value=def_g1, key=f"g1_{p_id}", disabled=bloqueado_por_fecha)
                         with col2:
-                            g2 = st.number_input(f"Goles {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p_id}", disabled=bloqueado_por_fecha)
+                            g2 = st.number_input(f"Goles {bandera2} {p['equipo2']}", min_value=0, max_value=20, value=def_g2, key=f"g2_{p_id}", disabled=bloqueado_por_fecha)
                         with col3:
                             st.write("")
                             st.write("")
@@ -431,7 +481,9 @@ else:
                     
                     with st.container(border=True):
                         info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
-                        st.write(f"**{p['equipo1']} vs {p['equipo2']}{info_grupo}**")
+                        bandera1 = obtener_bandera(p['equipo1'])
+                        bandera2 = obtener_bandera(p['equipo2'])
+                        st.write(f"**{bandera1} {p['equipo1']} vs {p['equipo2']} {bandera2} {info_grupo}**")
                         
                         def_res1 = int(p['goles1']) if es_jugado and pd.notna(p['goles1']) and str(p['goles1']).strip() != "" else 0
                         def_res2 = int(p['goles2']) if es_jugado and pd.notna(p['goles2']) and str(p['goles2']).strip() != "" else 0
