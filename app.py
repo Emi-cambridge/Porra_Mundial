@@ -7,7 +7,7 @@ import time
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
 
-# --- DICCIONARIO DE BANDERAS AUTOMÁTICAS ---
+# --- DICCIONARIO DE BANDERAS AUTOMÁTICAS (ACTUALIZADO CON TODOS TUS EQUIPOS) ---
 BANDERAS = {
     "españa": "🇪🇸", "alemania": "🇩🇪", "francia": "🇫🇷", "inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
     "italia": "🇮🇹", "portugal": "🇵🇹", "países bajos": "🇳🇱", "holanda": "🇳🇱",
@@ -17,7 +17,13 @@ BANDERAS = {
     "marruecos": "🇲🇦", "senegal": "🇸🇳", "japón": "🇯🇵", "corea del sur": "🇰🇷",
     "australia": "🇦🇺", "arabia saudita": "🇸🇦", "ecuador": "🇪🇨", "suiza": "🇨🇭",
     "dinamarca": "🇩🇰", "túnez": "🇹🇳", "polonia": "🇵🇱", "costa rica": "🇨🇷",
-    "gales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "irán": "🇮🇷", "ghana": "🇬🇭", "camerún": "🇨🇲", "serbia": "🇷🇸"
+    "gales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "irán": "🇮🇷", "ghana": "🇬🇭", "camerún": "🇨🇲", "serbia": "🇷🇸",
+    "sudáfrica": "🇿🇦", "república checa": "🇨🇿", "bosnia y herzegovina": "🇧🇦",
+    "paraguay": "🇵🇾", "catar": "🇶🇦", "haití": "🇭🇹", "escocia": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    "turquía": "🇹🇷", "curazao": "🇨🇼", "costa de marfil": "🇨🇮", "suecia": "🇸🇪",
+    "cabo verde": "🇨🇻", "egipto": "🇪🇬", "nueva zelanda": "🇳🇿", "irak": "🇮🇶",
+    "noruega": "🇳🇴", "argelia": "🇩🇿", "austria": "🇦🇹", "jordania": "🇯🇴",
+    "rd congo": "🇨🇩", "uzbekistán": "🇺🇿", "panamá": "🇵🇦"
 }
 
 def obtener_bandera(equipo):
@@ -253,7 +259,7 @@ else:
     if menu == "🏆 Clasificación":
         st.title("🏆 Clasificación de la Familia")
         
-        # --- NUEVO MARCADOR ANIMADO DEL PREMIO ---
+        # --- MARCADOR ANIMADO DEL PREMIO ---
         contenedor_premio = st.empty()
         
         if not st.session_state.animado_premio:
@@ -373,7 +379,6 @@ else:
                     info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
                     hora_str = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
                     
-                    # OBTENER BANDERAS AUTOMÁTICAS
                     bandera1 = obtener_bandera(p['equipo1'])
                     bandera2 = obtener_bandera(p['equipo2'])
                     
