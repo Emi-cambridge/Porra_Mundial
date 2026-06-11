@@ -7,7 +7,7 @@ import time
 # Configuración de la página web
 st.set_page_config(page_title="Porra Mundialista", page_icon="⚽", layout="centered")
 
-# --- DICCIONARIO DE BANDERAS AUTOMÁTICAS (ACTUALIZADO CON TODOS TUS EQUIPOS) ---
+# --- DICCIONARIO DE BANDERAS AUTOMÁTICAS ---
 BANDERAS = {
     "españa": "🇪🇸", "alemania": "🇩🇪", "francia": "🇫🇷", "inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
     "italia": "🇮🇹", "portugal": "🇵🇹", "países bajos": "🇳🇱", "holanda": "🇳🇱",
@@ -66,7 +66,7 @@ st.markdown("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def leer_tabla(pestana):
-    """Lee datos aprovechando la caché durante 10 mins (600s) para evitar el bloqueo de API de Google."""
+    """Lee datos aprovechando la caché durante 10 mins (600s)."""
     return conn.read(worksheet=pestana, ttl=600)
 
 # --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
@@ -277,7 +277,6 @@ else:
                 time.sleep(0.08)
             st.session_state.animado_premio = True
             
-        # Cuadro fijo definitivo
         contenedor_premio.markdown("""
             <div style="background-color: #fef9e7; padding: 20px; border-radius: 12px; border: 3px solid #f1c40f; text-align: center; margin-bottom: 20px; box-shadow: 0px 4px 10px rgba(241, 196, 15, 0.2);">
                 <span style="font-size: 2.1rem; font-weight: 900; color: #b7950b; text-shadow: 1px 1px 2px #f9e79f;">
@@ -332,10 +331,17 @@ else:
             meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                      "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
             
-            filtro = st.selectbox(
-                "🔍 Filtrar partidos por estado:",
-                ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS", "Solo partidos FINALIZADOS"]
-            )
+            # --- NUEVA BOTONERA PARA ELEGIR LA ZONA HORARIA ---
+            c_filtro, c_zona = st.columns(2)
+            with c_filtro:
+                filtro = st.selectbox(
+                    "🔍 Filtrar partidos:",
+                    ["Mostrar todos los partidos", "Solo partidos PENDIENTES", "Solo partidos GUARDADOS", "Solo partidos FINALIZADOS"]
+                )
+            with c_zona:
+                zona_horaria = st.radio("🌍 Zona horaria:", ["🇬🇧 UK (BST)", "🇨🇴 Colombia (-6h)"])
+                
+            st.divider()
             
             for _, p in df_partidos.iterrows():
                 p_id = int(p['id'])
@@ -351,7 +357,12 @@ else:
                     
                 bloqueado_por_fecha = False
                 
-                if not es_jugado and 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
+                # Valores por defecto para mostrar
+                fecha_mostrar = p['fecha'] if pd.notna(p['fecha']) else "Sin fecha"
+                hora_mostrar = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
+                texto_zona = "(BST)"
+                
+                if 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
                     try:
                         txt_fecha = str(p['fecha']).strip().lower()
                         txt_hora = str(p['hora']).strip()
@@ -368,22 +379,31 @@ else:
                             min_p = int(partes_h[1][:2])
                             
                             fecha_partido_real = datetime.datetime(2026, mes_partido, dia_partido, hora_p, min_p)
-                            limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
                             
+                            # --- CÁLCULO ESTRICTO DEL CIERRE EN BST ---
+                            limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
                             if ahora_bst > limite_apuesta:
                                 bloqueado_por_fecha = True
+                                
+                            # --- CAMBIO COSMÉTICO A HORA DE COLOMBIA ---
+                            if "Colombia" in zona_horaria:
+                                fecha_col = fecha_partido_real - datetime.timedelta(hours=6)
+                                mes_nombres = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 
+                                               7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+                                fecha_mostrar = f"{fecha_col.day:02d}-{mes_nombres[fecha_col.month]}"
+                                hora_mostrar = fecha_col.strftime("%H:%M")
+                                texto_zona = "(COT)"
                     except:
-                        bloqueado_por_fecha = False
+                        pass
 
                 with st.container(border=True):
                     info_grupo = f" ({p['grupo']})" if 'grupo' in p and pd.notna(p['grupo']) and str(p['grupo']).strip() != "" else ""
-                    hora_str = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
                     
                     bandera1 = obtener_bandera(p['equipo1'])
                     bandera2 = obtener_bandera(p['equipo2'])
                     
                     st.write(f"### {bandera1} {p['equipo1']} vs {p['equipo2']} {bandera2} {info_grupo}")
-                    st.caption(f"📅 {p['fecha']} a las {hora_str} (BST)")
+                    st.caption(f"📅 {fecha_mostrar} a las {hora_mostrar} {texto_zona}")
                     
                     def_g1, def_g2 = 0, 0
                     if tiene_apuesta:
