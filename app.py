@@ -27,7 +27,6 @@ BANDERAS = {
 }
 
 def obtener_bandera(equipo):
-    """Devuelve el emoji de la bandera correspondiente o una bandera blanca si no se encuentra."""
     nombre_limpio = str(equipo).strip().lower()
     return BANDERAS.get(nombre_limpio, "🏳️")
 
@@ -66,8 +65,12 @@ st.markdown("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def leer_tabla(pestana):
-    """Lee datos aprovechando la caché durante 10 mins (600s)."""
-    return conn.read(worksheet=pestana, ttl=600)
+    """Lee datos y limpia filas completamente vacías para evitar errores de tipo."""
+    try:
+        df = conn.read(worksheet=pestana, ttl=600)
+        return df.dropna(how='all')
+    except Exception:
+        return pd.DataFrame()
 
 # --- LÓGICA DE PUNTOS Y CLASIFICACIÓN ---
 def calcular_clasificacion():
@@ -80,6 +83,10 @@ def calcular_clasificacion():
     
     df_partidos.columns = df_partidos.columns.str.strip().str.lower()
     df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
+    
+    # Filtro de seguridad: ignorar partidos sin ID válido
+    df_partidos = df_partidos.dropna(subset=['id'])
+    df_usuarios = df_usuarios.dropna(subset=['id'])
         
     usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
     partidos_jugados = df_partidos[df_partidos['jugado'] == 1]
@@ -87,6 +94,7 @@ def calcular_clasificacion():
     apuestas_map = {}
     if not df_apuestas.empty:
         df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
+        df_apuestas = df_apuestas.dropna(subset=['usuario_id', 'partido_id'])
         for _, row in df_apuestas.iterrows():
             try:
                 apuestas_map[(int(row['usuario_id']), int(row['partido_id']))] = (int(row['goles1']), int(row['goles2']))
@@ -98,11 +106,14 @@ def calcular_clasificacion():
         puntos_totales = 0
         plenos = 0         
         aciertos_signo = 0 
-        u_id = int(u['id'])
+        try:
+            u_id = int(u['id'])
+        except:
+            continue
         
         for _, p in partidos_jugados.iterrows():
-            p_id = int(p['id'])
             try:
+                p_id = int(p['id'])
                 g_real1, g_real2 = int(p['goles1']), int(p['goles2'])
                 if (u_id, p_id) in apuestas_map:
                     g_bet1, g_bet2 = apuestas_map[(u_id, p_id)]
@@ -168,6 +179,9 @@ def generar_datos_evolucion():
     
     df_partidos.columns = df_partidos.columns.str.strip().str.lower()
     df_usuarios.columns = df_usuarios.columns.str.strip().str.lower()
+    
+    df_partidos = df_partidos.dropna(subset=['id'])
+    df_usuarios = df_usuarios.dropna(subset=['id'])
         
     usuarios = df_usuarios[df_usuarios['es_admin'] == 0]
     partidos_jugados = df_partidos[df_partidos['jugado'] == 1].sort_values(by='id')
@@ -175,6 +189,7 @@ def generar_datos_evolucion():
     apuestas_map = {}
     if not df_apuestas.empty:
         df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
+        df_apuestas = df_apuestas.dropna(subset=['usuario_id', 'partido_id'])
         for _, row in df_apuestas.iterrows():
             try:
                 apuestas_map[(int(row['usuario_id']), int(row['partido_id']))] = (int(row['goles1']), int(row['goles2']))
@@ -182,16 +197,19 @@ def generar_datos_evolucion():
                 continue
                 
     historial = []
-    estado_actual = {u['nombre']: 0 for _, u in usuarios.iterrows()}
+    estado_actual = {u['nombre']: 0 for _, u in usuarios.iterrows() if pd.notna(u['nombre'])}
     
     for _, p in partidos_jugados.iterrows():
-        p_id = int(p['id'])
-        etiqueta_partido = f"P{p_id} ({p['equipo1'][:3]}-{p['equipo2'][:3]})"
         try:
+            p_id = int(p['id'])
+            etiqueta_partido = f"P{p_id} ({str(p['equipo1'])[:3]}-{str(p['equipo2'])[:3]})"
             g_real1, g_real2 = int(p['goles1']), int(p['goles2'])
+            
             for _, u in usuarios.iterrows():
                 u_id = int(u['id'])
                 nombre = u['nombre']
+                if pd.isna(nombre): continue
+                
                 if (u_id, p_id) in apuestas_map:
                     g_bet1, g_bet2 = apuestas_map[(u_id, p_id)]
                     if g_real1 == g_bet1 and g_real2 == g_bet2:
@@ -200,10 +218,10 @@ def generar_datos_evolucion():
                          (g_real1 < g_real2 and g_bet1 < g_bet2) or \
                          (g_real1 == g_real2 and g_bet1 == g_bet2):
                         estado_actual[nombre] += 1
+                        
+            historial.append({"Partido": etiqueta_partido, **estado_actual})
         except:
-            pass
-            
-        historial.append({"Partido": etiqueta_partido, **estado_actual})
+            continue
         
     if not historial:
         return pd.DataFrame()
@@ -259,7 +277,6 @@ else:
     if menu == "🏆 Clasificación":
         st.title("🏆 Clasificación de la Familia")
         
-        # --- MARCADOR ANIMADO DEL PREMIO ---
         contenedor_premio = st.empty()
         
         if not st.session_state.animado_premio:
@@ -289,7 +306,7 @@ else:
         
         tabla_puntos = calcular_clasificacion()
         if not tabla_puntos.empty:
-            st.dataframe(tabla_puntos, use_container_width=True)
+            st.dataframe(tabla_puntos, width=700)
             
             st.divider()
             st.subheader("📈 Evolución de los Puntos")
@@ -314,10 +331,12 @@ else:
             st.warning("No se ha podido cargar el calendario de partidos.")
         else:
             df_partidos.columns = df_partidos.columns.str.strip().str.lower()
+            df_partidos = df_partidos.dropna(subset=['id'])
             
             apuestas_usuario = {}
             if not df_apuestas.empty:
                 df_apuestas.columns = df_apuestas.columns.str.strip().str.lower()
+                df_apuestas = df_apuestas.dropna(subset=['usuario_id', 'partido_id'])
                 df_u_apuestas = df_apuestas[df_apuestas['usuario_id'].astype(int) == st.session_state.user_id]
                 for _, row in df_u_apuestas.iterrows():
                     try:
@@ -331,7 +350,6 @@ else:
             meses = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, 
                      "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
             
-            # --- NUEVA BOTONERA PARA ELEGIR LA ZONA HORARIA ---
             c_filtro, c_zona = st.columns(2)
             with c_filtro:
                 filtro = st.selectbox(
@@ -344,8 +362,12 @@ else:
             st.divider()
             
             for _, p in df_partidos.iterrows():
-                p_id = int(p['id'])
-                es_jugado = int(p['jugado']) == 1
+                try:
+                    p_id = int(p['id'])
+                except:
+                    continue
+                    
+                es_jugado = int(p['jugado']) == 1 if pd.notna(p['jugado']) else False
                 tiene_apuesta = p_id in apuestas_usuario
                 
                 if filtro == "Solo partidos PENDIENTES" and (tiene_apuesta or es_jugado):
@@ -357,12 +379,11 @@ else:
                     
                 bloqueado_por_fecha = False
                 
-                # Valores por defecto para mostrar
                 fecha_mostrar = p['fecha'] if pd.notna(p['fecha']) else "Sin fecha"
                 hora_mostrar = str(p['hora']).strip() if 'hora' in p and pd.notna(p['hora']) else "Sin hora"
                 texto_zona = "(BST)"
                 
-                if 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
+                if not es_jugado and 'fecha' in p and pd.notna(p['fecha']) and 'hora' in p and pd.notna(p['hora']):
                     try:
                         txt_fecha = str(p['fecha']).strip().lower()
                         txt_hora = str(p['hora']).strip()
@@ -380,12 +401,10 @@ else:
                             
                             fecha_partido_real = datetime.datetime(2026, mes_partido, dia_partido, hora_p, min_p)
                             
-                            # --- CÁLCULO ESTRICTO DEL CIERRE EN BST ---
                             limite_apuesta = fecha_partido_real - datetime.timedelta(hours=2)
                             if ahora_bst > limite_apuesta:
                                 bloqueado_por_fecha = True
                                 
-                            # --- CAMBIO COSMÉTICO A HORA DE COLOMBIA ---
                             if "Colombia" in zona_horaria:
                                 fecha_col = fecha_partido_real - datetime.timedelta(hours=6)
                                 mes_nombres = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 
@@ -470,11 +489,12 @@ else:
                                         
                                         df_log = pd.concat([df_log, nueva_fila_log], ignore_index=True)
                                         conn.update(worksheet="log_apuestas", data=df_log)
-                                    except Exception as e:
+                                    except Exception:
                                         pass
                                     
                                     st.cache_data.clear()
                                     st.success("¡Apuesta guardada con éxito!")
+                                    time.sleep(1)
                                     st.rerun()
 
     # --- PANTALLA: PANEL ADMINISTRADOR ---
@@ -490,14 +510,20 @@ else:
                 st.info("No hay partidos en el calendario.")
             else:
                 df_partidos.columns = df_partidos.columns.str.strip().str.lower()
+                df_partidos = df_partidos.dropna(subset=['id'])
+                
                 filtro_admin = st.selectbox(
                     "🔍 Filtrar partidos del panel:",
                     ["Solo partidos PENDIENTES de cerrar", "Solo partidos FINALIZADOS", "Mostrar todos los partidos"]
                 )
                 
                 for _, p in df_partidos.iterrows():
-                    p_id = int(p['id'])
-                    es_jugado = int(p['jugado']) == 1
+                    try:
+                        p_id = int(p['id'])
+                    except:
+                        continue
+                        
+                    es_jugado = int(p['jugado']) == 1 if pd.notna(p['jugado']) else False
                     
                     if filtro_admin == "Solo partidos PENDIENTES de cerrar" and es_jugado:
                         continue
@@ -534,6 +560,7 @@ else:
                                 conn.update(worksheet="partidos", data=df_partidos_completo)
                                 st.cache_data.clear()
                                 st.success("¡Datos guardados y puntos actualizados!")
+                                time.sleep(1)
                                 st.rerun()
                                 
         with tab2:
@@ -555,6 +582,7 @@ else:
                     conn.update(worksheet="partidos", data=df_partidos_completo)
                     st.cache_data.clear()
                     st.success("Partido añadido con éxito.")
+                    time.sleep(1)
                     st.rerun()
                     
         with tab3:
@@ -562,7 +590,7 @@ else:
             try:
                 df_log_view = leer_tabla("log_apuestas")
                 if not df_log_view.empty:
-                    st.dataframe(df_log_view.sort_index(ascending=False), use_container_width=True)
+                    st.dataframe(df_log_view.sort_index(ascending=False), width=700)
                 else:
                     st.info("El log está vacío. Aparecerán datos cuando alguien guarde una apuesta.")
             except Exception:
